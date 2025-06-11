@@ -96,7 +96,7 @@ func RegisterRoutes(api huma.API, handler *TopologyHandler) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-topology",
 		Method:      http.MethodGet,
-		Path:        "/topology",
+		Path:        "/api/topology",
 		Summary:     "Get network topology",
 		Description: "Returns hierarchical network topology from a specified root device",
 		Tags:        []string{"topology"},
@@ -105,7 +105,7 @@ func RegisterRoutes(api huma.API, handler *TopologyHandler) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-device",
 		Method:      http.MethodGet,
-		Path:        "/device/{name}",
+		Path:        "/api/device/{name}",
 		Summary:     "Get device information",
 		Description: "Returns detailed information about a specific device including neighbors",
 		Tags:        []string{"devices"},
@@ -118,7 +118,7 @@ func RegisterRoutes(api huma.API, handler *TopologyHandler) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-health",
 		Method:      http.MethodGet,
-		Path:        "/health",
+		Path:        "/api/health",
 		Summary:     "Health check",
 		Description: "Returns service health status including database connectivity",
 		Tags:        []string{"system"},

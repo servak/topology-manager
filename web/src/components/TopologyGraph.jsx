@@ -166,7 +166,15 @@ function TopologyGraph({ topology }) {
 
   return (
     <div className="topology-graph">
-      <div ref={containerRef} id="topology-cy" />
+      <div 
+        ref={containerRef} 
+        id="topology-cy" 
+        style={{ 
+          width: '100%', 
+          height: '600px',
+          minHeight: '600px'
+        }} 
+      />
     </div>
   )
 }
