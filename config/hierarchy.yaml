@@ -1,0 +1,23 @@
+hierarchy:
+  device_types:
+    internet: 0
+    firewall: 1
+    router: 2
+    core: 3
+    distribution: 4
+    access: 5
+    server: 6
+    unknown: 5
+
+  naming_rules:
+    - pattern: "^core.*"
+      type: "core"
+    - pattern: "^dist.*"
+      type: "distribution" 
+    - pattern: "^access.*"
+      type: "access"
+    - pattern: ".*server.*"
+      type: "server"
+
+  manual_overrides:
+    "special-device": "core"

@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: topology-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+  topology-api:
+    build: 
+      context: ..
+      dockerfile: deployments/Dockerfile
+    container_name: topology-api
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_ADDR=redis:6379
+      - PROMETHEUS_URL=http://prometheus:9090
+    depends_on:
+      - redis
+    volumes:
+      - ../config:/app/config:ro
+    command: ["./topology-manager", "api", "--port", "8080"]
+
+  topology-worker:
+    build: 
+      context: ..
+      dockerfile: deployments/Dockerfile
+    container_name: topology-worker
+    environment:
+      - REDIS_ADDR=redis:6379
+      - PROMETHEUS_URL=http://prometheus:9090
+    depends_on:
+      - redis
+    volumes:
+      - ../config:/app/config:ro
+    command: ["./topology-manager", "worker", "--interval", "300"]
+
+volumes:
+  redis-data:
