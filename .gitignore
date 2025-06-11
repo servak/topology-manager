@@ -1,3 +1,6 @@
 .claude/
 /CLAUDE.md
 /topology-manager
+web/build
+web/node_modules
+web/pnpm-lock.yaml
