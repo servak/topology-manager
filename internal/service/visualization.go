@@ -33,10 +33,12 @@ func (s *VisualizationService) GetVisualTopology(ctx context.Context, rootDevice
 		return nil, fmt.Errorf("root device %s not found", rootDeviceID)
 	}
 
-	// BFS探索でトポロジーを構築
-	devices, links, err := s.exploreTopology(ctx, rootDeviceID, rootDevice.Layer, depth)
+	// 最適化されたサブトポロジー抽出を使用
+	devices, links, err := s.topologyRepo.ExtractSubTopology(ctx, rootDeviceID, topology.SubTopologyOptions{
+		Radius: depth,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to explore topology: %w", err)
+		return nil, fmt.Errorf("failed to extract sub-topology: %w", err)
 	}
 
 	// 可視化用のノードとエッジに変換
