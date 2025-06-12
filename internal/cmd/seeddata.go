@@ -171,21 +171,64 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 	accessDevices := filterDevicesByLayer(devices, 3)
 	serverDevices := filterDevicesByLayer(devices, 4)
 
-	// Core ↔ Distribution
-	for _, coreDevice := range coreDevices {
-		for i, distDevice := range distDevices {
+	// Core ↔ Distribution (現実的な接続パターン)
+	// 各Distributionは2つのCoreに冗長接続、各Coreは最大32ポート使用
+	maxCoreConnections := 32
+	coresPerDist := 2
+	
+	for i, distDevice := range distDevices {
+		connectionsCount := 0
+		
+		// 各DistributionはプライマリとセカンダリのCoreに接続
+		primaryCoreIndex := i % len(coreDevices)
+		secondaryCoreIndex := (i + 1) % len(coreDevices)
+		
+		// プライマリCore接続
+		if connectionsCount < coresPerDist && primaryCoreIndex < len(coreDevices) {
+			coreDevice := coreDevices[primaryCoreIndex]
+			corePortNum := (i % maxCoreConnections) + 1
+			
 			linkID := fmt.Sprintf("link-%03d", linkIndex)
 			link := topology.Link{
 				ID:         linkID,
 				SourceID:   coreDevice.ID,
 				TargetID:   distDevice.ID,
-				SourcePort: fmt.Sprintf("Ethernet%d", i+1),
+				SourcePort: fmt.Sprintf("Ethernet%d", corePortNum),
 				TargetPort: "Ethernet49",
 				Weight:     1.0,
 				Status:     "up",
 				Metadata: map[string]string{
 					"link_type": "core-distribution",
 					"speed":     "100G",
+					"redundancy": "primary",
+				},
+				LastSeen:  now,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			links = append(links, link)
+			linkIndex++
+			connectionsCount++
+		}
+		
+		// セカンダリCore接続（冗長化）
+		if connectionsCount < coresPerDist && secondaryCoreIndex < len(coreDevices) && secondaryCoreIndex != primaryCoreIndex {
+			coreDevice := coreDevices[secondaryCoreIndex]
+			corePortNum := (i % maxCoreConnections) + 1
+			
+			linkID := fmt.Sprintf("link-%03d", linkIndex)
+			link := topology.Link{
+				ID:         linkID,
+				SourceID:   coreDevice.ID,
+				TargetID:   distDevice.ID,
+				SourcePort: fmt.Sprintf("Ethernet%d", corePortNum),
+				TargetPort: "Ethernet50",
+				Weight:     1.0,
+				Status:     "up",
+				Metadata: map[string]string{
+					"link_type": "core-distribution",
+					"speed":     "100G",
+					"redundancy": "secondary",
 				},
 				LastSeen:  now,
 				CreatedAt: now,
@@ -196,28 +239,64 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 		}
 	}
 
-	// Distribution ↔ Access
-	for i, distDevice := range distDevices {
-		startIdx := i * (len(accessDevices) / len(distDevices))
-		endIdx := (i + 1) * (len(accessDevices) / len(distDevices))
-		if i == len(distDevices)-1 {
-			endIdx = len(accessDevices)
-		}
-
-		for j := startIdx; j < endIdx && j < len(accessDevices); j++ {
-			accessDevice := accessDevices[j]
+	// Distribution ↔ Access (現実的な接続パターン)
+	// 各Accessは2つのDistributionに冗長接続、Distributionは最大24ポートをアクセス用に使用
+	maxDistAccessPorts := 24
+	distsPerAccess := 2
+	
+	for i, accessDevice := range accessDevices {
+		connectionsCount := 0
+		
+		// 各AccessはプライマリとセカンダリのDistributionに接続
+		primaryDistIndex := i % len(distDevices)
+		secondaryDistIndex := (i + 1) % len(distDevices)
+		
+		// プライマリDistribution接続
+		if connectionsCount < distsPerAccess && primaryDistIndex < len(distDevices) {
+			distDevice := distDevices[primaryDistIndex]
+			distPortNum := (i % maxDistAccessPorts) + 1
+			
 			linkID := fmt.Sprintf("link-%03d", linkIndex)
 			link := topology.Link{
 				ID:         linkID,
 				SourceID:   distDevice.ID,
 				TargetID:   accessDevice.ID,
-				SourcePort: fmt.Sprintf("Ethernet%d", j-startIdx+1),
+				SourcePort: fmt.Sprintf("Ethernet%d", distPortNum),
 				TargetPort: "Ethernet49",
 				Weight:     2.0,
 				Status:     "up",
 				Metadata: map[string]string{
 					"link_type": "distribution-access",
 					"speed":     "10G",
+					"redundancy": "primary",
+				},
+				LastSeen:  now,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			links = append(links, link)
+			linkIndex++
+			connectionsCount++
+		}
+		
+		// セカンダリDistribution接続（冗長化）
+		if connectionsCount < distsPerAccess && secondaryDistIndex < len(distDevices) && secondaryDistIndex != primaryDistIndex {
+			distDevice := distDevices[secondaryDistIndex]
+			distPortNum := (i % maxDistAccessPorts) + 1
+			
+			linkID := fmt.Sprintf("link-%03d", linkIndex)
+			link := topology.Link{
+				ID:         linkID,
+				SourceID:   distDevice.ID,
+				TargetID:   accessDevice.ID,
+				SourcePort: fmt.Sprintf("Ethernet%d", distPortNum),
+				TargetPort: "Ethernet50",
+				Weight:     2.0,
+				Status:     "up",
+				Metadata: map[string]string{
+					"link_type": "distribution-access",
+					"speed":     "10G",
+					"redundancy": "secondary",
 				},
 				LastSeen:  now,
 				CreatedAt: now,
@@ -228,22 +307,27 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 		}
 	}
 
-	// Access ↔ Server
+	// Access ↔ Server (現実的な接続パターン)
+	// 各Accessスイッチは最大24台のサーバーに接続
+	maxAccessServerPorts := 24
+	
 	for i, accessDevice := range accessDevices {
-		startIdx := i * (len(serverDevices) / len(accessDevices))
-		endIdx := (i + 1) * (len(serverDevices) / len(accessDevices))
-		if i == len(accessDevices)-1 {
+		startIdx := i * maxAccessServerPorts
+		endIdx := startIdx + maxAccessServerPorts
+		if endIdx > len(serverDevices) {
 			endIdx = len(serverDevices)
 		}
 
 		for j := startIdx; j < endIdx && j < len(serverDevices); j++ {
 			serverDevice := serverDevices[j]
+			accessPortNum := (j - startIdx) + 1
+			
 			linkID := fmt.Sprintf("link-%03d", linkIndex)
 			link := topology.Link{
 				ID:         linkID,
 				SourceID:   accessDevice.ID,
 				TargetID:   serverDevice.ID,
-				SourcePort: fmt.Sprintf("Ethernet%d", j-startIdx+1),
+				SourcePort: fmt.Sprintf("Ethernet%d", accessPortNum),
 				TargetPort: "eth0",
 				Weight:     3.0,
 				Status:     "up",
