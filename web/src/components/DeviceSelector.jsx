@@ -18,7 +18,7 @@ function DeviceSelector({ onDeviceSelect, selectedDevice, depth, onDepthChange, 
     <form className="device-selector" onSubmit={handleSubmit}>
       <input
         type="text"
-        placeholder="Enter device hostname (e.g., s4.colo)"
+        placeholder="Enter device ID (e.g., core-001, access-019)"
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         disabled={loading}

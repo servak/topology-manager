@@ -27,7 +27,7 @@ const LAYER_POSITIONS = {
   6: 700    // server
 }
 
-function TopologyGraph({ topology }) {
+function TopologyGraph({ topology, onObjectSelect }) {
   const cyRef = useRef(null)
   const containerRef = useRef(null)
 
@@ -129,30 +129,33 @@ function TopologyGraph({ topology }) {
       
       console.log('Node clicked:', data)
       
-      const info = [
-        `Device: ${data.label}`,
-        `Type: ${data.type}`,
-        `Layer: ${data.layer}`,
-        data.hardware ? `Hardware: ${data.hardware}` : '',
-        `Status: ${data.status}`,
-        data.isRoot ? 'ROOT DEVICE' : ''
-      ].filter(Boolean).join('\n')
-      
-      alert(info)
+      if (onObjectSelect) {
+        onObjectSelect({
+          type: 'node',
+          data: data
+        })
+      }
     })
 
     cy.on('tap', 'edge', function(evt) {
       const edge = evt.target
       const data = edge.data()
       
-      const info = [
-        `Connection: ${data.source} → ${data.target}`,
-        data.localPort ? `Local Port: ${data.localPort}` : '',
-        data.remotePort ? `Remote Port: ${data.remotePort}` : '',
-        `Status: ${data.status}`
-      ].filter(Boolean).join('\n')
+      console.log('Edge clicked:', data)
       
-      alert(info)
+      if (onObjectSelect) {
+        onObjectSelect({
+          type: 'edge',
+          data: data
+        })
+      }
+    })
+
+    // 背景クリックで選択解除
+    cy.on('tap', function(evt) {
+      if (evt.target === cy && onObjectSelect) {
+        onObjectSelect(null)
+      }
     })
 
     cyRef.current = cy

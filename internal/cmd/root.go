@@ -28,7 +28,9 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 	
 	rootCmd.AddCommand(apiCmd)
-	rootCmd.AddCommand(workerCmd)
+	// rootCmd.AddCommand(workerCmd) // TODO: 後で実装
+	rootCmd.AddCommand(migrateCmd)
+	rootCmd.AddCommand(seedDataCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import TopologyGraph from './components/TopologyGraph'
 import DeviceSelector from './components/DeviceSelector'
+import DetailPanel from './components/DetailPanel'
 import './App.css'
 
 function App() {
@@ -9,6 +10,7 @@ function App() {
   const [error, setError] = useState(null)
   const [selectedDevice, setSelectedDevice] = useState('')
   const [depth, setDepth] = useState(3)
+  const [selectedObject, setSelectedObject] = useState(null)
 
   const fetchTopology = async (hostname, explorationDepth = 3) => {
     if (!hostname) return
@@ -17,7 +19,8 @@ function App() {
     setError(null)
 
     try {
-      const response = await fetch(`/api/topology?hostname=${encodeURIComponent(hostname)}&depth=${explorationDepth}`)
+      // 新しいAPI形式: /api/topology/{deviceId}?depth=N
+      const response = await fetch(`/api/topology/${encodeURIComponent(hostname)}?depth=${explorationDepth}`)
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -35,14 +38,24 @@ function App() {
 
   const handleDeviceSearch = (hostname) => {
     setSelectedDevice(hostname)
+    setSelectedObject(null) // 新しいトポロジー読み込み時は選択解除
     fetchTopology(hostname, depth)
   }
 
   const handleDepthChange = (newDepth) => {
     setDepth(newDepth)
+    setSelectedObject(null) // 深度変更時は選択解除
     if (selectedDevice) {
       fetchTopology(selectedDevice, newDepth)
     }
+  }
+
+  const handleObjectSelect = (object) => {
+    setSelectedObject(object)
+  }
+
+  const handleObjectDeselect = () => {
+    setSelectedObject(null)
   }
 
   return (
@@ -59,37 +72,51 @@ function App() {
       </header>
 
       <main className="app-main">
-        {error && (
-          <div className="error-message">
-            <h3>Error</h3>
-            <p>{error}</p>
-          </div>
-        )}
-        
-        {loading && (
-          <div className="loading-message">
-            <p>Loading topology...</p>
-          </div>
-        )}
+        <div className="main-content">
+          <div className="topology-section">
+            {error && (
+              <div className="error-message">
+                <h3>Error</h3>
+                <p>{error}</p>
+              </div>
+            )}
+            
+            {loading && (
+              <div className="loading-message">
+                <p>Loading topology...</p>
+              </div>
+            )}
 
-        {topology && !loading && (
-          <div className="topology-container">
-            <div className="topology-stats">
-              <span>Nodes: {topology.stats.total_nodes}</span>
-              <span>Edges: {topology.stats.total_edges}</span>
-              <span>Root: {topology.root_device}</span>
-              <span>Depth: {topology.depth}</span>
-            </div>
-            <TopologyGraph topology={topology} />
-          </div>
-        )}
+            {topology && !loading && (
+              <div className="topology-container">
+                <div className="topology-stats">
+                  <span>Nodes: {topology.stats.total_nodes}</span>
+                  <span>Edges: {topology.stats.total_edges}</span>
+                  <span>Root: {topology.root_device}</span>
+                  <span>Depth: {topology.depth}</span>
+                </div>
+                <TopologyGraph 
+                  topology={topology} 
+                  onObjectSelect={handleObjectSelect}
+                />
+              </div>
+            )}
 
-        {!topology && !loading && !error && (
-          <div className="welcome-message">
-            <h2>Welcome to Network Topology Manager</h2>
-            <p>Enter a device hostname above to visualize the network topology.</p>
+            {!topology && !loading && !error && (
+              <div className="welcome-message">
+                <h2>Welcome to Network Topology Manager</h2>
+                <p>Enter a device ID above to visualize the network topology.</p>
+              </div>
+            )}
           </div>
-        )}
+
+          <div className="detail-section">
+            <DetailPanel 
+              selectedObject={selectedObject} 
+              onClose={handleObjectDeselect}
+            />
+          </div>
+        </div>
       </main>
     </div>
   )

@@ -7,29 +7,49 @@ PrometheusからSNMP/LLDP情報を収集し、ネットワーク機器の階層�
 - PrometheusからLLDPメトリクス自動収集
 - デバイス階層分類（設定ファイルベース）
 - インタラクティブなトポロジー可視化
-- REST API提供
+- OpenAPI準拠のREST API（Huma v2）
+- PostgreSQLによる永続化
 - 単一バイナリでCLI実行
 
 ## アーキテクチャ
 
 ```
-Prometheus → Worker → Redis → API → React UI
+Prometheus → Worker → PostgreSQL → API (Huma) → React UI
 ```
+
+### 技術構成
+
+- **バックエンド**: Go + Huma v2 (OpenAPI準拠)
+- **データベース**: PostgreSQL
+- **フロントエンド**: React + Cytoscape.js
+- **CLI**: Cobra
+- **データソース**: Prometheus (LLDP metrics)
 
 ## クイックスタート
 
 ### 1. 依存関係の起動
 
 ```bash
-# Redis起動
-docker run -d --name redis -p 6379:6379 redis:7-alpine
+# PostgreSQL起動
+docker run -d --name postgres -p 5432:5432 -e POSTGRES_DB=topology_manager -e POSTGRES_USER=topology -e POSTGRES_PASSWORD=topology postgres:15-alpine
 
 # または Docker Compose使用
 cd deployments
-docker-compose up -d redis
+docker-compose up -d postgres
 ```
 
-### 2. アプリケーションのビルド
+### 2. データベースセットアップ
+
+```bash
+# マイグレーション実行
+export DATABASE_URL="postgres://topology:topology@localhost/topology_manager?sslmode=disable"
+go run ./cmd/migrate/main.go up
+
+# または CLI使用
+./topology-manager migrate up
+```
+
+### 3. アプリケーションのビルド
 
 ```bash
 # Goアプリケーション
@@ -41,15 +61,15 @@ npm install
 npm run build
 ```
 
-### 3. 設定
+### 4. 設定
 
 環境変数設定:
 ```bash
-export REDIS_ADDR=localhost:6379
+export DATABASE_URL="postgres://topology:topology@localhost/topology_manager?sslmode=disable"
 export PROMETHEUS_URL=http://localhost:9090
 ```
 
-### 4. 実行
+### 5. 実行
 
 ```bash
 # データ収集ワーカー起動
@@ -59,10 +79,11 @@ export PROMETHEUS_URL=http://localhost:9090
 ./topology-manager api --port 8080
 ```
 
-### 5. アクセス
+### 6. アクセス
 
 - Web UI: http://localhost:8080
-- API: http://localhost:8080/topology?hostname=device.example
+- API ドキュメント: http://localhost:8080/docs
+- トポロジー取得: http://localhost:8080/api/topology/device.example?depth=3
 
 ## CLI コマンド
 
@@ -73,6 +94,14 @@ topology-manager api --port 8080
 # データ収集ワーカー起動  
 topology-manager worker --interval 300
 
+# データベースマイグレーション
+topology-manager migrate up
+topology-manager migrate down
+
+# サンプルデータ生成
+topology-manager seed --count 20
+topology-manager seed --count 50 --clear
+
 # バージョン表示
 topology-manager version
 
@@ -82,30 +111,86 @@ topology-manager --help
 
 ## API エンドポイント
 
-### GET /topology
+全てのAPIエンドポイントは `/api` パスで始まり、OpenAPI準拠の自動生成ドキュメントが `/docs` で確認できます。
+
+### GET /api/topology/{deviceId}
 トポロジー取得
 
 **Parameters:**
-- `hostname` (required): 起点デバイス名
-- `depth` (default: 3): 探索深度
+- `deviceId` (path, required): 起点デバイスID
+- `depth` (query, default: 3): 探索深度
 
 **Example:**
 ```bash
-curl "http://localhost:8080/topology?hostname=s4.colo&depth=3"
+curl "http://localhost:8080/api/topology/s4.colo?depth=3"
 ```
 
-### GET /device/{name}
+### GET /api/devices
+デバイス一覧取得（ページング対応）
+
+```bash
+# 基本的な一覧取得
+curl "http://localhost:8080/api/devices"
+
+# ページング指定
+curl "http://localhost:8080/api/devices?page=2&page_size=50"
+
+# フィルタリング + ソート
+curl "http://localhost:8080/api/devices?type=switch&order_by=layer&sort_dir=desc"
+
+# 複合条件
+curl "http://localhost:8080/api/devices?hardware=Arista&page=1&page_size=10&order_by=name"
+```
+
+### GET /api/devices/{deviceId}
 デバイス詳細情報
 
 ```bash
-curl "http://localhost:8080/device/s4.colo"
+curl "http://localhost:8080/api/devices/s4.colo"
 ```
 
-### GET /health
+### GET /api/devices/{deviceId}/neighbors
+デバイスと隣接機器情報
+
+```bash
+curl "http://localhost:8080/api/devices/s4.colo/neighbors"
+```
+
+### POST /api/devices
+デバイス追加
+
+```bash
+curl -X POST "http://localhost:8080/api/devices" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "device-001",
+    "name": "example-switch",
+    "type": "switch",
+    "hardware": "Arista 7280",
+    "layer": 4
+  }'
+```
+
+### POST /api/links
+リンク追加
+
+```bash
+curl -X POST "http://localhost:8080/api/links" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "link-001",
+    "source_id": "device-001",
+    "target_id": "device-002",
+    "source_port": "Ethernet1",
+    "target_port": "Ethernet1"
+  }'
+```
+
+### GET /api/health
 ヘルスチェック
 
 ```bash
-curl "http://localhost:8080/health"
+curl "http://localhost:8080/api/health"
 ```
 
 ## 設定
@@ -132,9 +217,8 @@ hierarchy:
 
 ### 環境変数
 
-- `REDIS_ADDR`: Redis接続先 (default: localhost:6379)
-- `REDIS_PASSWORD`: Redisパスワード
-- `REDIS_DB`: RedisDB番号 (default: 0)
+- `DATABASE_URL`: PostgreSQL接続先 (default: postgres://topology:topology@localhost/topology_manager?sslmode=disable)
+- `PORT`: APIサーバーポート (default: 8080)
 - `PROMETHEUS_URL`: Prometheus URL (default: http://localhost:9090)
 - `TOPOLOGY_CONFIG_PATH`: 設定ファイルパス
 - `WEB_DIR`: Webアセットディレクトリ
@@ -145,7 +229,7 @@ hierarchy:
 
 - Go 1.21+
 - Node.js 18+
-- Redis
+- PostgreSQL
 - Prometheus (LLDP metrics)
 
 ### 開発環境起動
@@ -168,19 +252,26 @@ docker-compose up --build
 
 ## トラブルシューティング
 
+### PostgreSQL接続エラー
+- DATABASE_URL環境変数を確認
+- PostgreSQLの起動状態を確認
+- データベースとユーザーの存在を確認
+
+### マイグレーションエラー
+- マイグレーションファイルのパスを確認
+- PostgreSQLユーザーの権限を確認
+- `topology-manager migrate up` コマンドでマイグレーションを実行
+
 ### Prometheus接続エラー
 - PROMETHEUS_URL環境変数を確認
 - Prometheusの起動状態を確認
 - LLDPメトリクス(`lldpRemSysName`)の存在を確認
 
-### Redis接続エラー
-- REDIS_ADDR環境変数を確認
-- Redisの起動状態を確認
-
 ### 空のトポロジー
 - Prometheusにlldpメトリクスが存在するか確認
 - デバイス名が階層設定とマッチするか確認
 - ワーカーがデータ収集できているか確認
+- PostgreSQLにデバイスとリンクデータが保存されているか確認
 
 ## ライセンス
 
