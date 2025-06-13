@@ -12,6 +12,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/spf13/cobra"
+	"github.com/servak/topology-manager/internal/config"
 )
 
 var migrateCmd = &cobra.Command{
@@ -25,12 +26,29 @@ var migrateCmd = &cobra.Command{
 func runMigrate(cmd *cobra.Command, args []string) {
 	command := args[0]
 
-	// PostgreSQL DSN を環境変数から取得
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://topology:topology@localhost/topology_manager?sslmode=disable"
+	// 設定ファイルを読み込み
+	cfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// データベース設定を確認
+	if cfg.Database.Type != "postgres" {
+		log.Fatalf("Migration currently only supports PostgreSQL. Current type: %s", cfg.Database.Type)
+	}
+
+	// PostgreSQL DSN を設定ファイルまたは環境変数から取得
+	var dsn string
+	if dsnFromEnv := os.Getenv("DATABASE_URL"); dsnFromEnv != "" {
+		dsn = dsnFromEnv
 		if verbose {
-			log.Printf("Using default database URL (set DATABASE_URL to override)")
+			log.Printf("Using DATABASE_URL from environment variable")
+		}
+	} else {
+		// 設定ファイルからDSNを構築
+		dsn = cfg.Database.Postgres.DSN()
+		if verbose {
+			log.Printf("Using database configuration from config file")
 		}
 	}
 

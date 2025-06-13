@@ -1,0 +1,113 @@
+# Network Topology Manager Configuration
+# This is an example configuration file with all available options
+
+hierarchy:
+  # Device type hierarchy levels (lower numbers = higher in hierarchy)
+  device_types:
+    core: 1
+    distribution: 2
+    access: 3
+    server: 4
+    unknown: 99
+
+  # Automatic device type detection rules based on naming patterns
+  naming_rules:
+    - pattern: "^core-.*"
+      type: "core"
+    - pattern: "^dist-.*"
+      type: "distribution"
+    - pattern: "^access-.*"
+      type: "access"
+    - pattern: "^server-.*"
+      type: "server"
+
+  # Manual device type overrides
+  manual_overrides:
+    # "special-device-001": "core"
+
+database:
+  # Database type: postgres or neo4j
+  type: postgres
+
+  # PostgreSQL configuration
+  # Environment variables are supported: ${VAR} or ${VAR:default}
+  postgres:
+    host: ${DB_HOST:192.168.64.2}              # Environment: DB_HOST
+    port: 5432
+    user: ${DB_USER:tm}                     # Environment: DB_USER
+    password: ${DB_PASSWORD:tm_password}    # Environment: DB_PASSWORD
+    dbname: ${DB_NAME:topology_manager}     # Environment: DB_NAME
+    sslmode: ${DB_SSLMODE:disable}          # Environment: DB_SSLMODE
+
+  # Neo4j configuration (when type: neo4j)
+  # Environment variables are supported: ${VAR} or ${VAR:default}
+  neo4j:
+    uri: ${NEO4J_URI:bolt://localhost:7687}       # Environment: NEO4J_URI
+    username: ${NEO4J_USERNAME:neo4j}             # Environment: NEO4J_USERNAME
+    password: ${NEO4J_PASSWORD:neo4j_password}    # Environment: NEO4J_PASSWORD
+    database: ${NEO4J_DATABASE:neo4j}             # Environment: NEO4J_DATABASE
+
+prometheus:
+  url: "${PROMETHEUS_URL:http://localhost:9090}"
+  timeout: "30s"
+  
+  # メトリクスマッピング設定 - 環境に応じてカスタマイズ
+  metrics_mapping:
+    device_info:
+      # 最初に試すメトリクス設定
+      primary:
+        metric_name: "snmp_device_info"
+        labels:
+          device_id: "instance"       # PrometheusラベルからdeviceIDを取得
+          ip_address: "instance"      # IPアドレス
+          hardware: "sysDescr"        # ハードウェア情報
+          location: "sysLocation"     # 場所情報
+      
+      # プライマリが失敗した場合のフォールバック設定
+      fallbacks:
+        - metric_name: "node_uname_info"  # node_exporterメトリクス
+          labels:
+            device_id: "instance"
+            ip_address: "instance"
+            hardware: "machine"
+            location: ""              # このメトリクスには場所情報がない
+        
+        - metric_name: "lldp_local_info"  # LLDPローカル情報
+          labels:
+            device_id: "chassis_id"
+            ip_address: "mgmt_address"
+            hardware: "system_description"
+            location: "system_location"
+    
+    lldp_neighbors:
+      # LLDP隣接情報の取得設定
+      primary:
+        metric_name: "snmp_lldp_neighbor_info"
+        labels:
+          source_device: "instance"
+          source_port: "lldpLocalPortId"
+          target_device: "lldpRemSysName"
+          target_port: "lldpRemPortId"
+      
+      fallbacks:
+        - metric_name: "lldp_remote_info"
+          labels:
+            source_device: "local_chassis"
+            source_port: "local_port_id"
+            target_device: "remote_chassis"
+            target_port: "remote_port_id"
+  
+  # フィールド要件定義
+  field_requirements:
+    device_info:
+      required: ["device_id"]  # 最低限これがないとスキップ
+      optional: ["ip_address", "hardware", "location"]
+    lldp_neighbors:
+      required: ["source_device", "target_device"]  # リンクの必須フィールド
+      optional: ["source_port", "target_port"]
+
+# Environment Variable Examples:
+# export DB_HOST=production-db.example.com
+# export DB_PASSWORD=secure-password-from-vault
+# export NEO4J_PASSWORD=secure-neo4j-password
+# export PROMETHEUS_URL=http://prometheus.example.com:9090

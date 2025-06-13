@@ -6,7 +6,6 @@ import (
 
 type Device struct {
 	ID        string            `json:"id" db:"id"`
-	Name      string            `json:"name" db:"name"`
 	Type      string            `json:"type" db:"type"`
 	Hardware  string            `json:"hardware" db:"hardware"`
 	Instance  string            `json:"instance" db:"instance"`

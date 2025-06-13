@@ -143,7 +143,6 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 
 			device := topology.Device{
 				ID:        deviceID,
-				Name:      deviceID,
 				Type:      deviceType.typeName,
 				Hardware:  deviceType.hardware,
 				Instance:  fmt.Sprintf("dc1.%s", deviceType.prefix),

@@ -48,7 +48,7 @@ func (s *VisualizationService) GetVisualTopology(ctx context.Context, rootDevice
 	for _, device := range devices {
 		visualNode := visualization.VisualNode{
 			ID:       device.ID,
-			Name:     device.Name,
+			Name:     device.ID, // IDをNameとして使用
 			Type:     device.Type,
 			Hardware: device.Hardware,
 			Status:   device.Status,

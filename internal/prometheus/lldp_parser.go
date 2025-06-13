@@ -273,7 +273,6 @@ func (p *LLDPParser) resolveDeviceID(identifier string, deviceMap map[string]Dev
 func (p *LLDPParser) createDeviceFromInfo(deviceID, identifier string, deviceMap map[string]DeviceInfo, now time.Time) topology.Device {
 	device := topology.Device{
 		ID:        deviceID,
-		Name:      deviceID,
 		Type:      "unknown",
 		Status:    "up",
 		Layer:     99, // Default layer for unknown devices
@@ -285,9 +284,6 @@ func (p *LLDPParser) createDeviceFromInfo(deviceID, identifier string, deviceMap
 
 	// Fill in additional info if available
 	if deviceInfo, exists := deviceMap[identifier]; exists {
-		if deviceInfo.Hostname != "" {
-			device.Name = deviceInfo.Hostname
-		}
 		if deviceInfo.IPAddress != "" {
 			device.IPAddress = deviceInfo.IPAddress
 		}
@@ -305,8 +301,8 @@ func (p *LLDPParser) createDeviceFromInfo(deviceID, identifier string, deviceMap
 		}
 	}
 
-	// Determine device type and layer from hostname patterns
-	deviceType, layer := p.determineDeviceType(device.Name)
+	// Determine device type and layer from device ID patterns
+	deviceType, layer := p.determineDeviceType(device.ID)
 	device.Type = deviceType
 	device.Layer = layer
 

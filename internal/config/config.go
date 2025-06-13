@@ -22,8 +22,10 @@ type Config struct {
 
 // PrometheusConfig holds Prometheus configuration
 type PrometheusConfig struct {
-	URL     string        `yaml:"url"`
-	Timeout time.Duration `yaml:"timeout"`
+	URL             string                         `yaml:"url"`
+	Timeout         time.Duration                  `yaml:"timeout"`
+	MetricsMapping  map[string]prometheus.MetricConfigGroup   `yaml:"metrics_mapping"`
+	FieldRequirements map[string]prometheus.FieldRequirement `yaml:"field_requirements"`
 }
 
 // HierarchyConfig holds device hierarchy configuration
@@ -111,6 +113,9 @@ func (c *Config) setDefaults() {
 	if c.Prometheus.Timeout == 0 {
 		c.Prometheus.Timeout = 30 * time.Second
 	}
+	
+	// Set default metrics mapping
+	c.setDefaultMetricsMapping()
 
 }
 
@@ -133,6 +138,80 @@ func (c *Config) Validate() error {
 
 
 	return nil
+}
+
+// setDefaultMetricsMapping sets default metrics mapping configuration
+func (c *Config) setDefaultMetricsMapping() {
+	if c.Prometheus.MetricsMapping == nil {
+		c.Prometheus.MetricsMapping = map[string]prometheus.MetricConfigGroup{
+			"device_info": {
+				Primary: prometheus.MetricMapping{
+					MetricName: "snmp_device_info",
+					Labels: map[string]string{
+						"device_id":  "instance",
+						"ip_address": "instance",
+						"hardware":   "sysDescr",
+						"location":   "sysLocation",
+					},
+				},
+				Fallbacks: []prometheus.MetricMapping{
+					{
+						MetricName: "node_uname_info",
+						Labels: map[string]string{
+							"device_id":  "instance",
+							"ip_address": "instance",
+							"hardware":   "machine",
+							"location":   "",
+						},
+					},
+					{
+						MetricName: "lldp_local_info",
+						Labels: map[string]string{
+							"device_id":  "chassis_id",
+							"ip_address": "mgmt_address",
+							"hardware":   "system_description",
+							"location":   "system_location",
+						},
+					},
+				},
+			},
+			"lldp_neighbors": {
+				Primary: prometheus.MetricMapping{
+					MetricName: "snmp_lldp_neighbor_info",
+					Labels: map[string]string{
+						"source_device": "instance",
+						"source_port":   "lldpLocalPortId",
+						"target_device": "lldpRemSysName",
+						"target_port":   "lldpRemPortId",
+					},
+				},
+				Fallbacks: []prometheus.MetricMapping{
+					{
+						MetricName: "lldp_remote_info",
+						Labels: map[string]string{
+							"source_device": "local_chassis",
+							"source_port":   "local_port_id",
+							"target_device": "remote_chassis",
+							"target_port":   "remote_port_id",
+						},
+					},
+				},
+			},
+		}
+	}
+
+	if c.Prometheus.FieldRequirements == nil {
+		c.Prometheus.FieldRequirements = map[string]prometheus.FieldRequirement{
+			"device_info": {
+				Required: []string{"device_id"},
+				Optional: []string{"ip_address", "hardware", "location"},
+			},
+			"lldp_neighbors": {
+				Required: []string{"source_device", "target_device"},
+				Optional: []string{"source_port", "target_port"},
+			},
+		}
+	}
 }
 
 // validateHierarchy validates the hierarchy configuration
@@ -297,5 +376,13 @@ func (c *Config) GetPrometheusConfig() prometheus.Config {
 	return prometheus.Config{
 		URL:     expandEnvVar(c.Prometheus.URL),
 		Timeout: c.Prometheus.Timeout,
+	}
+}
+
+// GetMetricsConfig returns metrics configuration for MetricsExtractor
+func (c *Config) GetMetricsConfig() *prometheus.MetricsConfig {
+	return &prometheus.MetricsConfig{
+		MetricsMapping:    c.Prometheus.MetricsMapping,
+		FieldRequirements: c.Prometheus.FieldRequirements,
 	}
 }

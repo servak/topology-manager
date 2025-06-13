@@ -12,12 +12,13 @@ import (
 
 // PrometheusSync handles synchronization of topology data from Prometheus
 type PrometheusSync struct {
-	promClient   *prometheus.Client
-	lldpParser   *prometheus.LLDPParser
-	repository   topology.Repository
-	scheduler    *Scheduler
-	logger       *log.Logger
-	config       PrometheusSyncConfig
+	promClient       *prometheus.Client
+	metricsExtractor *prometheus.MetricsExtractor
+	lldpParser       *prometheus.LLDPParser
+	repository       topology.Repository
+	scheduler        *Scheduler
+	logger           *log.Logger
+	config           PrometheusSyncConfig
 }
 
 // PrometheusSyncConfig holds configuration for Prometheus synchronization
@@ -60,6 +61,7 @@ func DefaultPrometheusSyncConfig() PrometheusSyncConfig {
 // NewPrometheusSync creates a new Prometheus synchronization worker
 func NewPrometheusSync(
 	promClient *prometheus.Client,
+	metricsConfig *prometheus.MetricsConfig,
 	repository topology.Repository,
 	config PrometheusSyncConfig,
 	logger *log.Logger,
@@ -68,16 +70,18 @@ func NewPrometheusSync(
 		logger = log.Default()
 	}
 
+	metricsExtractor := prometheus.NewMetricsExtractor(promClient, metricsConfig)
 	lldpParser := prometheus.NewLLDPParser(promClient)
 	scheduler := NewScheduler(logger)
 
 	return &PrometheusSync{
-		promClient: promClient,
-		lldpParser: lldpParser,
-		repository: repository,
-		scheduler:  scheduler,
-		logger:     logger,
-		config:     config,
+		promClient:       promClient,
+		metricsExtractor: metricsExtractor,
+		lldpParser:       lldpParser,
+		repository:       repository,
+		scheduler:        scheduler,
+		logger:           logger,
+		config:           config,
 	}
 }
 
@@ -174,98 +178,54 @@ func (ps *PrometheusSync) SyncNow() error {
 func (ps *PrometheusSync) syncLLDPTopology(ctx context.Context) error {
 	ps.logger.Println("Starting LLDP topology synchronization...")
 
-	// Build topology from LLDP data
-	devices, links, err := ps.lldpParser.BuildTopologyFromLLDP(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to build topology from LLDP: %w", err)
+	// Extract links using MetricsExtractor with fallback support
+	links, warnings := ps.metricsExtractor.ExtractLinks(ctx)
+	
+	// Log warnings (data missing scenarios)
+	for _, warning := range warnings {
+		ps.logger.Printf("Info: %v", warning)
 	}
 
-	ps.logger.Printf("Found %d devices and %d links from LLDP data", len(devices), len(links))
-
-	// Batch process devices
-	if len(devices) > 0 {
-		if err := ps.batchAddDevices(ctx, devices); err != nil {
-			return fmt.Errorf("failed to add devices: %w", err)
-		}
-		ps.logger.Printf("Successfully added/updated %d devices", len(devices))
+	if len(links) == 0 {
+		ps.logger.Println("No links extracted from Prometheus - skipping this cycle")
+		return nil
 	}
+
+	ps.logger.Printf("Successfully extracted %d links using metrics mapping", len(links))
 
 	// Batch process links
-	if len(links) > 0 {
-		if err := ps.batchAddLinks(ctx, links); err != nil {
-			return fmt.Errorf("failed to add links: %w", err)
-		}
-		ps.logger.Printf("Successfully added/updated %d links", len(links))
+	if err := ps.batchAddLinks(ctx, links); err != nil {
+		return fmt.Errorf("failed to add links: %w", err)
 	}
 
-	ps.logger.Println("LLDP topology synchronization completed successfully")
+	ps.logger.Printf("LLDP topology synchronization completed, processed %d links", len(links))
 	return nil
 }
 
 func (ps *PrometheusSync) syncDeviceInfo(ctx context.Context) error {
 	ps.logger.Println("Starting device information synchronization...")
 
-	// Parse device information from Prometheus
-	deviceInfos, err := ps.lldpParser.ParseDeviceInfo(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to parse device info: %w", err)
+	// Extract devices using MetricsExtractor with fallback support
+	devices, warnings := ps.metricsExtractor.ExtractDevices(ctx)
+	
+	// Log warnings (data missing scenarios)
+	for _, warning := range warnings {
+		ps.logger.Printf("Info: %v", warning)
 	}
 
-	ps.logger.Printf("Found %d devices with additional information", len(deviceInfos))
-
-	// Update devices with additional information
-	var updateCount int
-	for _, deviceInfo := range deviceInfos {
-		deviceID := deviceInfo.DeviceID
-		if deviceInfo.Hostname != "" {
-			deviceID = deviceInfo.Hostname
-		}
-
-		// Get existing device
-		existingDevice, err := ps.repository.GetDevice(ctx, deviceID)
-		if err != nil {
-			ps.logger.Printf("Failed to get device %s: %v", deviceID, err)
-			continue
-		}
-
-		if existingDevice == nil {
-			// Device doesn't exist, skip
-			continue
-		}
-
-		// Update device with new information
-		updated := false
-		if deviceInfo.IPAddress != "" && existingDevice.IPAddress != deviceInfo.IPAddress {
-			existingDevice.IPAddress = deviceInfo.IPAddress
-			updated = true
-		}
-		if deviceInfo.Location != "" && existingDevice.Location != deviceInfo.Location {
-			existingDevice.Location = deviceInfo.Location
-			updated = true
-		}
-		if deviceInfo.Contact != "" {
-			if existingDevice.Metadata == nil {
-				existingDevice.Metadata = make(map[string]string)
-			}
-			if existingDevice.Metadata["contact"] != deviceInfo.Contact {
-				existingDevice.Metadata["contact"] = deviceInfo.Contact
-				updated = true
-			}
-		}
-
-		if updated {
-			existingDevice.LastSeen = deviceInfo.LastSeen
-			existingDevice.UpdatedAt = time.Now()
-
-			if err := ps.repository.UpdateDevice(ctx, *existingDevice); err != nil {
-				ps.logger.Printf("Failed to update device %s: %v", deviceID, err)
-				continue
-			}
-			updateCount++
-		}
+	if len(devices) == 0 {
+		ps.logger.Println("No devices extracted from Prometheus - skipping this cycle")
+		return nil
 	}
 
-	ps.logger.Printf("Device information synchronization completed, updated %d devices", updateCount)
+	ps.logger.Printf("Successfully extracted %d devices using metrics mapping", len(devices))
+
+	// Batch process devices
+	if err := ps.batchAddDevices(ctx, devices); err != nil {
+		return fmt.Errorf("failed to add/update devices: %w", err)
+	}
+
+	ps.logger.Printf("Device information synchronization completed, processed %d devices", len(devices))
 	return nil
 }
 

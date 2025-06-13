@@ -118,8 +118,14 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	logger.Printf("Connected to Prometheus at %s", prometheusURL)
 
+	// Load configuration for metrics mapping
+	appConfig, err := config.LoadConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
 	// Create and start worker
-	worker := worker.NewPrometheusSync(promClient, repo, workerConfig, logger)
+	worker := worker.NewPrometheusSync(promClient, appConfig.GetMetricsConfig(), repo, workerConfig, logger)
 
 	if err := worker.Start(); err != nil {
 		return fmt.Errorf("failed to start worker: %w", err)

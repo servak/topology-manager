@@ -57,7 +57,6 @@ func (r *Neo4jRepository) AddDevice(ctx context.Context, device topology.Device)
 	query := `
 		CREATE (d:Device {
 			id: $id,
-			name: $name,
 			type: $type,
 			hardware: $hardware,
 			instance: $instance,
@@ -75,7 +74,6 @@ func (r *Neo4jRepository) AddDevice(ctx context.Context, device topology.Device)
 	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
 		return tx.Run(ctx, query, map[string]interface{}{
 			"id":         device.ID,
-			"name":       device.Name,
 			"type":       device.Type,
 			"hardware":   device.Hardware,
 			"instance":   device.Instance,
@@ -262,7 +260,6 @@ func (r *Neo4jRepository) BulkAddDevices(ctx context.Context, devices []topology
 			query := `
 				CREATE (d:Device {
 					id: $id,
-					name: $name,
 					type: $type,
 					hardware: $hardware,
 					instance: $instance,
@@ -279,7 +276,6 @@ func (r *Neo4jRepository) BulkAddDevices(ctx context.Context, devices []topology
 
 			_, err := tx.Run(ctx, query, map[string]interface{}{
 				"id":         device.ID,
-				"name":       device.Name,
 				"type":       device.Type,
 				"hardware":   device.Hardware,
 				"instance":   device.Instance,
@@ -469,14 +465,8 @@ func (r *Neo4jRepository) nodeToDevice(node neo4j.Node) (*topology.Device, error
 		return nil, fmt.Errorf("device id is not a string")
 	}
 
-	name, ok := props["name"].(string)
-	if !ok {
-		return nil, fmt.Errorf("device name is not a string")
-	}
-
 	device := &topology.Device{
-		ID:   id,
-		Name: name,
+		ID: id,
 	}
 
 	// Extract optional fields with safe type assertions
