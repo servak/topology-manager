@@ -713,3 +713,276 @@ func (s *VisualizationService) isOnlyReachableThroughGroups(nodeID string, edges
 	
 	return len(neighbors) > 0 // Only return true if there are neighbors (avoid isolated nodes)
 }
+
+// ExpandGroupInTopology expands a group node by replacing it with its constituent devices and their neighbors
+func (s *VisualizationService) ExpandGroupInTopology(
+	ctx context.Context,
+	groupID string,
+	rootDeviceID string,
+	groupDeviceIDs []string,
+	currentTopology visualization.VisualTopology,
+	groupingOpts visualization.GroupingOptions,
+	expandDepth int,
+) (*visualization.VisualTopology, []visualization.VisualNode, []visualization.VisualEdge, error) {
+	if expandDepth <= 0 {
+		expandDepth = 2
+	}
+
+	// グループ内のデバイスとその近傍を取得
+	expandedDevices := make(map[string]topology.Device)
+	expandedLinks := make(map[string]topology.Link)
+
+	// グループ内のデバイスを出発点として探索
+	for _, deviceID := range groupDeviceIDs {
+		// デバイス自体を追加
+		device, err := s.topologyRepo.GetDevice(ctx, deviceID)
+		if err != nil || device == nil {
+			continue
+		}
+		expandedDevices[deviceID] = *device
+
+		// 指定された深度まで近傍を探索
+		neighbors, links, err := s.exploreFromDevice(ctx, deviceID, expandDepth)
+		if err != nil {
+			continue
+		}
+
+		// 結果をマージ
+		for _, neighbor := range neighbors {
+			expandedDevices[neighbor.ID] = neighbor
+		}
+		for _, link := range links {
+			linkKey := fmt.Sprintf("%s-%s", link.SourceID, link.TargetID)
+			expandedLinks[linkKey] = link
+		}
+	}
+
+	// 展開されたデバイスを可視化ノードに変換
+	newVisualNodes := make([]visualization.VisualNode, 0)
+	deviceDepthMap := make(map[string]int)
+
+	// ルートからの距離を再計算
+	allDevices := make([]topology.Device, 0, len(expandedDevices))
+	allLinks := make([]topology.Link, 0, len(expandedLinks))
+	for _, device := range expandedDevices {
+		allDevices = append(allDevices, device)
+	}
+	for _, link := range expandedLinks {
+		allLinks = append(allLinks, link)
+	}
+	deviceDepthMap = s.calculateDeviceDepths(allDevices, allLinks, rootDeviceID)
+
+	// 新しいノードを作成
+	fmt.Printf("ExpandGroupInTopology: Found %d expanded devices\n", len(expandedDevices))
+	for _, device := range expandedDevices {
+		exists := s.nodeExistsInTopology(device.ID, currentTopology)
+		fmt.Printf("Device %s exists in topology: %v\n", device.ID, exists)
+		// 既存のトポロジーに含まれていないノードのみ追加
+		if !exists {
+			visualNode := visualization.VisualNode{
+				ID:       device.ID,
+				Name:     device.ID,
+				Type:     device.Type,
+				Hardware: device.Hardware,
+				Status:   device.Status,
+				Layer:    device.Layer,
+				IsRoot:   device.ID == rootDeviceID,
+				Position: visualization.Position{X: 0, Y: 0},
+				Style:    s.getNodeStyle(device.Type, device.Status, device.ID == rootDeviceID),
+			}
+			newVisualNodes = append(newVisualNodes, visualNode)
+			fmt.Printf("Added new visual node: %s\n", device.ID)
+		}
+	}
+	fmt.Printf("Total new visual nodes created: %d\n", len(newVisualNodes))
+
+	// 新しいエッジを作成
+	newVisualEdges := make([]visualization.VisualEdge, 0)
+	for _, link := range expandedLinks {
+		// 既存のトポロジーに含まれていないエッジのみ追加
+		if !s.edgeExistsInTopology(link.ID, currentTopology) {
+			visualEdge := visualization.VisualEdge{
+				ID:         link.ID,
+				Source:     link.SourceID,
+				Target:     link.TargetID,
+				LocalPort:  link.SourcePort,
+				RemotePort: link.TargetPort,
+				Status:     link.Status,
+				Weight:     link.Weight,
+				Style:      s.getEdgeStyle(link.Status, link.Weight),
+			}
+			newVisualEdges = append(newVisualEdges, visualEdge)
+		}
+	}
+
+	// 現在のトポロジーを更新
+	updatedTopology := currentTopology
+
+	// グループノードを削除
+	filteredNodes := make([]visualization.VisualNode, 0)
+	for _, node := range updatedTopology.Nodes {
+		if node.ID != groupID {
+			filteredNodes = append(filteredNodes, node)
+		}
+	}
+
+	// グループノードに接続されていたエッジを削除
+	filteredEdges := make([]visualization.VisualEdge, 0)
+	for _, edge := range updatedTopology.Edges {
+		if edge.Source != groupID && edge.Target != groupID {
+			filteredEdges = append(filteredEdges, edge)
+		}
+	}
+
+	// 新しいノードとエッジを追加
+	fmt.Printf("Before adding: filteredNodes=%d, newVisualNodes=%d\n", len(filteredNodes), len(newVisualNodes))
+	updatedTopology.Nodes = append(filteredNodes, newVisualNodes...)
+	updatedTopology.Edges = append(filteredEdges, newVisualEdges...)
+	fmt.Printf("After adding: updatedTopology.Nodes=%d\n", len(updatedTopology.Nodes))
+
+	// グループ情報を更新（展開されたグループを削除）
+	filteredGroups := make([]visualization.GroupedVisualNode, 0)
+	for _, group := range updatedTopology.Groups {
+		if group.ID != groupID {
+			filteredGroups = append(filteredGroups, group)
+		}
+	}
+	updatedTopology.Groups = filteredGroups
+
+	// 新しく追加されたノードに対して再帰的なグルーピングを適用
+	if groupingOpts.Enabled {
+		fmt.Printf("Applying recursive grouping...\n")
+		// 新しいノードの中で深度が条件を満たすものをグルーピング対象とする
+		candidateNodes := make([]visualization.VisualNode, 0)
+		for _, node := range newVisualNodes {
+			depth := deviceDepthMap[node.ID]
+			fmt.Printf("Node %s depth=%d, maxDepth=%d\n", node.ID, depth, groupingOpts.MaxDepth)
+			if !node.IsRoot && depth >= groupingOpts.MaxDepth {
+				candidateNodes = append(candidateNodes, node)
+			}
+		}
+		fmt.Printf("Candidate nodes for grouping: %d (min required: %d)\n", len(candidateNodes), groupingOpts.MinGroupSize)
+
+		if len(candidateNodes) >= groupingOpts.MinGroupSize {
+			newGroups := s.createGroups(candidateNodes, newVisualEdges, deviceDepthMap, groupingOpts)
+			fmt.Printf("Created %d new groups\n", len(newGroups))
+			if len(newGroups) > 0 {
+				// 新しいグループを適用
+				fmt.Printf("Before recursive grouping: %d nodes\n", len(updatedTopology.Nodes))
+				groupedNodes, groupedEdges := s.applyGrouping(updatedTopology.Nodes, updatedTopology.Edges, newGroups, rootDeviceID)
+				updatedTopology.Nodes = groupedNodes
+				updatedTopology.Edges = groupedEdges
+				updatedTopology.Groups = append(updatedTopology.Groups, newGroups...)
+				fmt.Printf("After recursive grouping: %d nodes\n", len(updatedTopology.Nodes))
+			}
+		}
+	}
+
+	// 統計情報を更新
+	updatedTopology.Stats = visualization.TopologyStats{
+		TotalNodes:  len(updatedTopology.Nodes),
+		TotalEdges:  len(updatedTopology.Edges),
+		TotalGroups: len(updatedTopology.Groups),
+		Generated:   time.Now(),
+	}
+
+	// レイアウトを再計算
+	updatedTopology.Layout = s.calculateLayout(updatedTopology.Nodes, updatedTopology.Edges, rootDeviceID)
+
+	return &updatedTopology, newVisualNodes, newVisualEdges, nil
+}
+
+// exploreFromDevice explores topology from a specific device up to a given depth
+func (s *VisualizationService) exploreFromDevice(ctx context.Context, deviceID string, depth int) ([]topology.Device, []topology.Link, error) {
+	visited := make(map[string]bool)
+	deviceMap := make(map[string]topology.Device)
+	linkMap := make(map[string]topology.Link)
+
+	queue := []struct {
+		deviceID string
+		level    int
+	}{{deviceID, 0}}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if visited[current.deviceID] || current.level > depth {
+			continue
+		}
+
+		visited[current.deviceID] = true
+
+		// デバイス情報を取得
+		device, err := s.topologyRepo.GetDevice(ctx, current.deviceID)
+		if err != nil || device == nil {
+			continue
+		}
+		deviceMap[current.deviceID] = *device
+
+		// 隣接するリンクを取得
+		links, err := s.topologyRepo.GetDeviceLinks(ctx, current.deviceID)
+		if err != nil {
+			continue
+		}
+
+		for _, link := range links {
+			var neighborID string
+			if link.SourceID == current.deviceID {
+				neighborID = link.TargetID
+			} else {
+				neighborID = link.SourceID
+			}
+
+			// リンクを追加
+			linkKey := fmt.Sprintf("%s-%s", link.SourceID, link.TargetID)
+			reverseLinkKey := fmt.Sprintf("%s-%s", link.TargetID, link.SourceID)
+			if _, exists := linkMap[linkKey]; !exists {
+				if _, exists := linkMap[reverseLinkKey]; !exists {
+					linkMap[linkKey] = link
+				}
+			}
+
+			// 隣接デバイスをキューに追加
+			if !visited[neighborID] && current.level < depth {
+				queue = append(queue, struct {
+					deviceID string
+					level    int
+				}{neighborID, current.level + 1})
+			}
+		}
+	}
+
+	// マップからスライスに変換
+	devices := make([]topology.Device, 0, len(deviceMap))
+	for _, device := range deviceMap {
+		devices = append(devices, device)
+	}
+
+	links := make([]topology.Link, 0, len(linkMap))
+	for _, link := range linkMap {
+		links = append(links, link)
+	}
+
+	return devices, links, nil
+}
+
+// nodeExistsInTopology checks if a node already exists in the current topology
+func (s *VisualizationService) nodeExistsInTopology(nodeID string, topology visualization.VisualTopology) bool {
+	for _, node := range topology.Nodes {
+		if node.ID == nodeID {
+			return true
+		}
+	}
+	return false
+}
+
+// edgeExistsInTopology checks if an edge already exists in the current topology
+func (s *VisualizationService) edgeExistsInTopology(edgeID string, topology visualization.VisualTopology) bool {
+	for _, edge := range topology.Edges {
+		if edge.ID == edgeID {
+			return true
+		}
+	}
+	return false
+}

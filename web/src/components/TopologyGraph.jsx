@@ -28,12 +28,18 @@ const LAYER_POSITIONS = {
   6: 700    // server
 }
 
-function TopologyGraph({ topology, onObjectSelect }) {
+function TopologyGraph({ topology, onObjectSelect, onGroupExpand }) {
   const cyRef = useRef(null)
   const containerRef = useRef(null)
 
   useEffect(() => {
     if (!topology || !containerRef.current) return
+
+    console.log('TopologyGraph re-rendering with topology:', {
+      nodes: topology.nodes.length,
+      edges: topology.edges.length,
+      groups: topology.groups.length
+    })
 
     if (cyRef.current) {
       cyRef.current.destroy()
@@ -163,14 +169,11 @@ function TopologyGraph({ topology, onObjectSelect }) {
       const node = evt.target
       const data = node.data()
       
-      console.log('Group double-clicked:', data)
+      console.log('Group double-clicked for expansion:', data)
       
-      // グループの展開機能を実装する場合
-      if (onObjectSelect) {
-        onObjectSelect({
-          type: 'group-expand',
-          data: data
-        })
+      // グループ展開を実行
+      if (onGroupExpand) {
+        onGroupExpand(data)
       }
     })
 

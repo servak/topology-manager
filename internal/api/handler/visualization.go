@@ -28,6 +28,15 @@ func (h *VisualizationHandler) Register(api huma.API) {
 		Summary:     "Get visual topology",
 		Tags:        []string{"visualization"},
 	}, h.GetTopology)
+
+	// グループ展開用API
+	huma.Register(api, huma.Operation{
+		OperationID: "expand-group",
+		Method:      http.MethodPost,
+		Path:        "/api/topology/expand-group",
+		Summary:     "Expand group node and get detailed topology",
+		Tags:        []string{"visualization"},
+	}, h.ExpandGroup)
 }
 
 func (h *VisualizationHandler) GetTopology(ctx context.Context, input *struct {
@@ -60,5 +69,53 @@ func (h *VisualizationHandler) GetTopology(ctx context.Context, input *struct {
 		Body visualization.VisualTopology
 	}{
 		Body: *visualTopology,
+	}, nil
+}
+
+func (h *VisualizationHandler) ExpandGroup(ctx context.Context, input *struct {
+	Body struct {
+		GroupID          string   `json:"group_id" doc:"Group ID to expand"`
+		RootDeviceID     string   `json:"root_device_id" doc:"Original root device ID"`
+		GroupDeviceIDs   []string `json:"group_device_ids" doc:"Device IDs within the group"`
+		CurrentTopology  visualization.VisualTopology `json:"current_topology" doc:"Current topology state"`
+		GroupingOptions  visualization.GroupingOptions `json:"grouping_options" doc:"Grouping configuration"`
+		ExpandDepth      int      `json:"expand_depth" default:"2" doc:"Depth to expand from group devices"`
+	} `json:"body"`
+}) (*struct {
+	Body struct {
+		ExpandedTopology visualization.VisualTopology `json:"expanded_topology" doc:"Topology with expanded group"`
+		NewNodes         []visualization.VisualNode   `json:"new_nodes" doc:"Newly added nodes"`
+		NewEdges         []visualization.VisualEdge   `json:"new_edges" doc:"Newly added edges"`
+	} `json:"body"`
+}, error) {
+	expandedTopology, newNodes, newEdges, err := h.visualizationService.ExpandGroupInTopology(
+		ctx,
+		input.Body.GroupID,
+		input.Body.RootDeviceID,
+		input.Body.GroupDeviceIDs,
+		input.Body.CurrentTopology,
+		input.Body.GroupingOptions,
+		input.Body.ExpandDepth,
+	)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Failed to expand group", err)
+	}
+
+	return &struct {
+		Body struct {
+			ExpandedTopology visualization.VisualTopology `json:"expanded_topology" doc:"Topology with expanded group"`
+			NewNodes         []visualization.VisualNode   `json:"new_nodes" doc:"Newly added nodes"`
+			NewEdges         []visualization.VisualEdge   `json:"new_edges" doc:"Newly added edges"`
+		} `json:"body"`
+	}{
+		Body: struct {
+			ExpandedTopology visualization.VisualTopology `json:"expanded_topology" doc:"Topology with expanded group"`
+			NewNodes         []visualization.VisualNode   `json:"new_nodes" doc:"Newly added nodes"`
+			NewEdges         []visualization.VisualEdge   `json:"new_edges" doc:"Newly added edges"`
+		}{
+			ExpandedTopology: *expandedTopology,
+			NewNodes:         newNodes,
+			NewEdges:         newEdges,
+		},
 	}, nil
 }

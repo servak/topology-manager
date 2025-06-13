@@ -18,6 +18,7 @@ function App() {
     enabled: true,  // デフォルトでグルーピングを有効化
     groupByPrefix: true,
     groupByType: false,
+    groupByDepth: false,
     minGroupSize: 3,
     maxGroupDepth: 2,
     prefixMinLen: 3
@@ -54,6 +55,7 @@ function App() {
         max_group_depth: groupingOptions.maxGroupDepth.toString(),
         group_by_prefix: groupingOptions.groupByPrefix.toString(),
         group_by_type: groupingOptions.groupByType.toString(),
+        group_by_depth: groupingOptions.groupByDepth.toString(),
         prefix_min_len: groupingOptions.prefixMinLen.toString()
       })
 
@@ -103,6 +105,59 @@ function App() {
     }
   }
 
+  const handleGroupExpand = async (groupData) => {
+    if (!topology || !selectedDevice) return
+
+    setLoading(true)
+    try {
+      // グループ情報を取得
+      const group = topology.groups.find(g => g.id === groupData.id)
+      if (!group) {
+        console.error('Group not found:', groupData.id)
+        return
+      }
+
+      const response = await fetch('/api/topology/expand-group', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          group_id: group.id,
+          root_device_id: selectedDevice,
+          group_device_ids: group.device_ids,
+          current_topology: topology,
+          grouping_options: {
+            enabled: groupingOptions.enabled,
+            min_group_size: groupingOptions.minGroupSize,
+            max_depth: groupingOptions.maxGroupDepth,
+            group_by_prefix: groupingOptions.groupByPrefix,
+            group_by_type: groupingOptions.groupByType,
+            group_by_depth: groupingOptions.groupByDepth,
+            prefix_min_len: groupingOptions.prefixMinLen
+          },
+          expand_depth: 2
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('Group expand response:', data)
+      console.log('Current topology nodes before update:', topology.nodes.length)
+      console.log('Expanded topology nodes:', data.expanded_topology.nodes.length)
+      setTopology(data.expanded_topology)
+      console.log('Group expanded successfully. New nodes:', data.new_nodes.length, 'New edges:', data.new_edges.length)
+    } catch (err) {
+      setError(err.message)
+      console.error('Failed to expand group:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'topology':
@@ -134,6 +189,7 @@ function App() {
                   <TopologyGraph 
                     topology={topology} 
                     onObjectSelect={handleObjectSelect}
+                    onGroupExpand={handleGroupExpand}
                   />
                 </div>
               )}
