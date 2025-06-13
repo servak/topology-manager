@@ -91,8 +91,8 @@ func (s *Scheduler) AddTask(task *Task) error {
 		task.Timeout = 5 * time.Minute
 	}
 
-	// Set initial next run time
-	task.NextRun = time.Now().Add(task.Interval)
+	// Set initial next run time to now for immediate execution
+	task.NextRun = time.Now()
 
 	s.tasks[task.ID] = task
 	s.logger.Printf("Added task: %s (%s) with interval %s", task.ID, task.Name, task.Interval)
