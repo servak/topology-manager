@@ -7,6 +7,7 @@ import (
 
 	"github.com/servak/topology-manager/internal/domain/topology"
 	"github.com/servak/topology-manager/internal/domain/visualization"
+	"github.com/servak/topology-manager/pkg/grouping"
 )
 
 type VisualizationService struct {
@@ -20,6 +21,12 @@ func NewVisualizationService(topologyRepo topology.Repository) *VisualizationSer
 }
 
 func (s *VisualizationService) GetVisualTopology(ctx context.Context, rootDeviceID string, depth int) (*visualization.VisualTopology, error) {
+	return s.GetVisualTopologyWithGrouping(ctx, rootDeviceID, depth, visualization.GroupingOptions{
+		Enabled: false,
+	})
+}
+
+func (s *VisualizationService) GetVisualTopologyWithGrouping(ctx context.Context, rootDeviceID string, depth int, groupingOpts visualization.GroupingOptions) (*visualization.VisualTopology, error) {
 	if depth <= 0 {
 		depth = 3
 	}
@@ -44,6 +51,10 @@ func (s *VisualizationService) GetVisualTopology(ctx context.Context, rootDevice
 	// 可視化用のノードとエッジに変換
 	visualNodes := make([]visualization.VisualNode, 0, len(devices))
 	nodeMap := make(map[string]*visualization.VisualNode)
+	deviceDepthMap := make(map[string]int)
+
+	// ルートからの距離を計算
+	deviceDepthMap = s.calculateDeviceDepths(devices, links, rootDeviceID)
 
 	for _, device := range devices {
 		visualNode := visualization.VisualNode{
@@ -79,6 +90,14 @@ func (s *VisualizationService) GetVisualTopology(ctx context.Context, rootDevice
 		}
 	}
 
+	// グルーピング処理
+	var groups []visualization.GroupedVisualNode
+	if groupingOpts.Enabled {
+		groups = s.createGroups(visualNodes, visualEdges, deviceDepthMap, groupingOpts)
+		// グループ化されたノードを除外し、グループノードを追加
+		visualNodes, visualEdges = s.applyGrouping(visualNodes, visualEdges, groups, rootDeviceID)
+	}
+
 	// レイアウト計算
 	layout := s.calculateLayout(visualNodes, visualEdges, rootDeviceID)
 
@@ -90,10 +109,11 @@ func (s *VisualizationService) GetVisualTopology(ctx context.Context, rootDevice
 	}
 
 	stats := visualization.TopologyStats{
-		TotalNodes: len(visualNodes),
-		TotalEdges: len(visualEdges),
-		Layers:     layerStats,
-		Generated:  time.Now(),
+		TotalNodes:  len(visualNodes),
+		TotalEdges:  len(visualEdges),
+		TotalGroups: len(groups),
+		Layers:      layerStats,
+		Generated:   time.Now(),
 	}
 
 	return &visualization.VisualTopology{
@@ -102,6 +122,7 @@ func (s *VisualizationService) GetVisualTopology(ctx context.Context, rootDevice
 		Timestamp:  time.Now().Unix(),
 		Nodes:      visualNodes,
 		Edges:      visualEdges,
+		Groups:     groups,
 		Layout:     layout,
 		Stats:      stats,
 	}, nil
@@ -322,4 +343,373 @@ func (s *VisualizationService) calculateLayout(nodes []visualization.VisualNode,
 		},
 		Positions: positions,
 	}
+}
+
+// calculateDeviceDepths calculates the depth of each device from the root
+func (s *VisualizationService) calculateDeviceDepths(devices []topology.Device, links []topology.Link, rootDeviceID string) map[string]int {
+	depthMap := make(map[string]int)
+	visited := make(map[string]bool)
+	
+	// Build adjacency list
+	adjList := make(map[string][]string)
+	for _, link := range links {
+		adjList[link.SourceID] = append(adjList[link.SourceID], link.TargetID)
+		adjList[link.TargetID] = append(adjList[link.TargetID], link.SourceID)
+	}
+	
+	// BFS to calculate depths
+	queue := []struct {
+		deviceID string
+		depth    int
+	}{{rootDeviceID, 0}}
+	
+	depthMap[rootDeviceID] = 0
+	visited[rootDeviceID] = true
+	
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		
+		for _, neighborID := range adjList[current.deviceID] {
+			if !visited[neighborID] {
+				visited[neighborID] = true
+				depthMap[neighborID] = current.depth + 1
+				queue = append(queue, struct {
+					deviceID string
+					depth    int
+				}{neighborID, current.depth + 1})
+			}
+		}
+	}
+	
+	return depthMap
+}
+
+// createGroups creates groups based on grouping options
+func (s *VisualizationService) createGroups(nodes []visualization.VisualNode, edges []visualization.VisualEdge, deviceDepthMap map[string]int, opts visualization.GroupingOptions) []visualization.GroupedVisualNode {
+	var groups []visualization.GroupedVisualNode
+	
+	if opts.MinGroupSize <= 1 {
+		opts.MinGroupSize = 3 // デフォルト最小グループサイズ
+	}
+	
+	// 深度によるフィルタリング
+	candidateNodes := make([]visualization.VisualNode, 0)
+	for _, node := range nodes {
+		if !node.IsRoot && deviceDepthMap[node.ID] >= opts.MaxDepth {
+			candidateNodes = append(candidateNodes, node)
+		}
+	}
+	
+	if len(candidateNodes) < opts.MinGroupSize {
+		return groups
+	}
+	
+	// プレフィックスによるグルーピング
+	if opts.GroupByPrefix {
+		deviceNames := make([]string, len(candidateNodes))
+		deviceNodeMap := make(map[string]visualization.VisualNode)
+		for i, node := range candidateNodes {
+			deviceNames[i] = node.Name
+			deviceNodeMap[node.Name] = node
+		}
+		
+		prefixGroups := grouping.GroupByLongestCommonPrefix(deviceNames, opts.MinGroupSize)
+		for i, group := range prefixGroups {
+			if len(group.Prefix) >= opts.PrefixMinLen {
+				groupID := fmt.Sprintf("group-prefix-%d", i)
+				groupNode := visualization.GroupedVisualNode{
+					ID:        groupID,
+					Name:      fmt.Sprintf("%s* (%d)", group.Prefix, group.Count),
+					Type:      "group",
+					GroupType: "prefix",
+					Prefix:    group.Prefix,
+					Count:     group.Count,
+					DeviceIDs: group.DeviceIDs,
+					Depth:     opts.MaxDepth,
+					IsExpanded: false,
+					Position:  visualization.Position{X: 0, Y: 0},
+					Style: visualization.GroupedNodeStyle{
+						Color:       "#95a5a6",
+						Shape:       "round-rectangle",
+						Size:        50,
+						BorderColor: "#7f8c8d",
+						BorderWidth: 3,
+						Label:       fmt.Sprintf("%s* (%d)", group.Prefix, group.Count),
+					},
+					InternalEdgeCount: s.countInternalEdges(group.DeviceIDs, edges),
+					ExternalEdges:     s.findExternalEdges(group.DeviceIDs, edges),
+				}
+				groups = append(groups, groupNode)
+			}
+		}
+	}
+	
+	// タイプによるグルーピング
+	if opts.GroupByType {
+		deviceTypes := make(map[string]string)
+		for _, node := range candidateNodes {
+			deviceTypes[node.ID] = node.Type
+		}
+		
+		typeGroups := grouping.GroupByType(deviceTypes)
+		for i, group := range typeGroups {
+			if group.Count >= opts.MinGroupSize {
+				groupID := fmt.Sprintf("group-type-%d", i)
+				groupNode := visualization.GroupedVisualNode{
+					ID:        groupID,
+					Name:      fmt.Sprintf("%s (%d)", group.Prefix, group.Count),
+					Type:      "group",
+					GroupType: "type",
+					Prefix:    group.Prefix,
+					Count:     group.Count,
+					DeviceIDs: group.DeviceIDs,
+					Depth:     opts.MaxDepth,
+					IsExpanded: false,
+					Position:  visualization.Position{X: 0, Y: 0},
+					Style: visualization.GroupedNodeStyle{
+						Color:       "#3498db",
+						Shape:       "round-rectangle",
+						Size:        50,
+						BorderColor: "#2980b9",
+						BorderWidth: 3,
+						Label:       fmt.Sprintf("%s (%d)", group.Prefix, group.Count),
+					},
+					InternalEdgeCount: s.countInternalEdges(group.DeviceIDs, edges),
+					ExternalEdges:     s.findExternalEdges(group.DeviceIDs, edges),
+				}
+				groups = append(groups, groupNode)
+			}
+		}
+	}
+	
+	return groups
+}
+
+// applyGrouping applies grouping by removing grouped nodes and adding group nodes
+func (s *VisualizationService) applyGrouping(nodes []visualization.VisualNode, edges []visualization.VisualEdge, groups []visualization.GroupedVisualNode, rootDeviceID string) ([]visualization.VisualNode, []visualization.VisualEdge) {
+	if len(groups) == 0 {
+		return nodes, edges
+	}
+	
+	// グループ化されるデバイスIDのセットを作成
+	groupedDeviceIDs := make(map[string]bool)
+	for _, group := range groups {
+		for _, deviceID := range group.DeviceIDs {
+			groupedDeviceIDs[deviceID] = true
+		}
+	}
+	
+	// グループ化されたノードの先のノードも特定
+	nodesAfterGroups := make(map[string]bool)
+	s.findNodesAfterGroups(nodes, edges, groupedDeviceIDs, nodesAfterGroups, rootDeviceID)
+	
+	// グループ化されないノードを保持（グループの先のノードも除外、ただしルートノードは除外しない）
+	filteredNodes := make([]visualization.VisualNode, 0)
+	for _, node := range nodes {
+		if !groupedDeviceIDs[node.ID] && (!nodesAfterGroups[node.ID] || node.IsRoot) {
+			filteredNodes = append(filteredNodes, node)
+		}
+	}
+	
+	// グループノードを追加（VisualNodeとして）
+	for _, group := range groups {
+		groupVisualNode := visualization.VisualNode{
+			ID:       group.ID,
+			Name:     group.Name,
+			Type:     "group",
+			Hardware: fmt.Sprintf("Group of %d devices", group.Count),
+			Status:   "active",
+			Layer:    0, // グループノードの階層
+			IsRoot:   false,
+			Position: group.Position,
+			Style: visualization.NodeStyle{
+				Color:       group.Style.Color,
+				Shape:       group.Style.Shape,
+				Size:        group.Style.Size,
+				BorderColor: group.Style.BorderColor,
+				BorderWidth: group.Style.BorderWidth,
+			},
+		}
+		filteredNodes = append(filteredNodes, groupVisualNode)
+	}
+	
+	// エッジをフィルタリング（グループ内部のエッジを除外し、グループとの接続エッジを作成）
+	filteredEdges := make([]visualization.VisualEdge, 0)
+	edgeIDMap := make(map[string]bool) // 重複エッジを防ぐ
+	
+	for _, edge := range edges {
+		sourceGrouped := groupedDeviceIDs[edge.Source]
+		targetGrouped := groupedDeviceIDs[edge.Target]
+		
+		// 両方ともグループ化されていない場合はそのまま保持
+		if !sourceGrouped && !targetGrouped {
+			filteredEdges = append(filteredEdges, edge)
+			continue
+		}
+		
+		// 片方がグループ化されている場合、グループノードとの接続エッジを作成
+		// ただし、グループより先のノードとの接続は作成しない
+		sourceAfterGroup := nodesAfterGroups[edge.Source]
+		targetAfterGroup := nodesAfterGroups[edge.Target]
+		
+		if sourceGrouped && !targetGrouped && !targetAfterGroup {
+			// ソースがグループ化されていて、ターゲットがグループの先でない場合
+			groupID := s.findGroupIDForDevice(edge.Source, groups)
+			if groupID != "" {
+				newEdgeID := fmt.Sprintf("%s-%s", groupID, edge.Target)
+				if !edgeIDMap[newEdgeID] {
+					newEdge := visualization.VisualEdge{
+						ID:         newEdgeID,
+						Source:     groupID,
+						Target:     edge.Target,
+						LocalPort:  "group",
+						RemotePort: edge.RemotePort,
+						Status:     edge.Status,
+						Weight:     edge.Weight,
+						Style:      edge.Style,
+					}
+					filteredEdges = append(filteredEdges, newEdge)
+					edgeIDMap[newEdgeID] = true
+				}
+			}
+		} else if !sourceGrouped && targetGrouped && !sourceAfterGroup {
+			// ターゲットがグループ化されていて、ソースがグループの先でない場合
+			groupID := s.findGroupIDForDevice(edge.Target, groups)
+			if groupID != "" {
+				newEdgeID := fmt.Sprintf("%s-%s", edge.Source, groupID)
+				if !edgeIDMap[newEdgeID] {
+					newEdge := visualization.VisualEdge{
+						ID:         newEdgeID,
+						Source:     edge.Source,
+						Target:     groupID,
+						LocalPort:  edge.LocalPort,
+						RemotePort: "group",
+						Status:     edge.Status,
+						Weight:     edge.Weight,
+						Style:      edge.Style,
+					}
+					filteredEdges = append(filteredEdges, newEdge)
+					edgeIDMap[newEdgeID] = true
+				}
+			}
+		}
+		// 両方がグループ化されている場合は内部エッジなので除外
+	}
+	
+	return filteredNodes, filteredEdges
+}
+
+// countInternalEdges counts edges within a group
+func (s *VisualizationService) countInternalEdges(deviceIDs []string, edges []visualization.VisualEdge) int {
+	deviceSet := make(map[string]bool)
+	for _, id := range deviceIDs {
+		deviceSet[id] = true
+	}
+	
+	count := 0
+	for _, edge := range edges {
+		if deviceSet[edge.Source] && deviceSet[edge.Target] {
+			count++
+		}
+	}
+	return count
+}
+
+// findExternalEdges finds edges connecting to devices outside the group
+func (s *VisualizationService) findExternalEdges(deviceIDs []string, edges []visualization.VisualEdge) []string {
+	deviceSet := make(map[string]bool)
+	for _, id := range deviceIDs {
+		deviceSet[id] = true
+	}
+	
+	var externalEdges []string
+	for _, edge := range edges {
+		sourceInGroup := deviceSet[edge.Source]
+		targetInGroup := deviceSet[edge.Target]
+		
+		// 片方だけがグループ内にある場合は外部エッジ
+		if (sourceInGroup && !targetInGroup) || (!sourceInGroup && targetInGroup) {
+			externalEdges = append(externalEdges, edge.ID)
+		}
+	}
+	return externalEdges
+}
+
+// findGroupIDForDevice finds the group ID that contains the given device
+func (s *VisualizationService) findGroupIDForDevice(deviceID string, groups []visualization.GroupedVisualNode) string {
+	for _, group := range groups {
+		for _, id := range group.DeviceIDs {
+			if id == deviceID {
+				return group.ID
+			}
+		}
+	}
+	return ""
+}
+
+// findNodesAfterGroups identifies nodes that are only reachable through grouped nodes
+func (s *VisualizationService) findNodesAfterGroups(nodes []visualization.VisualNode, edges []visualization.VisualEdge, groupedDeviceIDs map[string]bool, nodesAfterGroups map[string]bool, rootDeviceID string) {
+	// Convert VisualEdge to Link for calculateDeviceDepths
+	links := make([]topology.Link, len(edges))
+	for i, edge := range edges {
+		links[i] = topology.Link{
+			SourceID: edge.Source,
+			TargetID: edge.Target,
+		}
+	}
+	
+	// Convert VisualNode to Device for calculateDeviceDepths  
+	devices := make([]topology.Device, len(nodes))
+	for i, node := range nodes {
+		devices[i] = topology.Device{
+			ID: node.ID,
+		}
+	}
+	
+	// Create a map of node depths from root
+	deviceDepthMap := s.calculateDeviceDepths(devices, links, rootDeviceID)
+	
+	// Find the maximum depth of grouped devices
+	maxGroupDepth := 0
+	for deviceID := range groupedDeviceIDs {
+		if depth, exists := deviceDepthMap[deviceID]; exists && depth > maxGroupDepth {
+			maxGroupDepth = depth
+		}
+	}
+	
+	// Any non-grouped node that is deeper than the max group depth 
+	// and only reachable through grouped nodes should be hidden
+	for _, node := range nodes {
+		if !groupedDeviceIDs[node.ID] && !node.IsRoot {
+			if nodeDepth, exists := deviceDepthMap[node.ID]; exists && nodeDepth > maxGroupDepth {
+				// Check if this node is only reachable through grouped nodes
+				if s.isOnlyReachableThroughGroups(node.ID, edges, groupedDeviceIDs) {
+					nodesAfterGroups[node.ID] = true
+				}
+			}
+		}
+	}
+}
+
+// isOnlyReachableThroughGroups checks if a node can only be reached through grouped nodes
+func (s *VisualizationService) isOnlyReachableThroughGroups(nodeID string, edges []visualization.VisualEdge, groupedDeviceIDs map[string]bool) bool {
+	// Find all direct neighbors of this node
+	neighbors := make([]string, 0)
+	for _, edge := range edges {
+		if edge.Source == nodeID {
+			neighbors = append(neighbors, edge.Target)
+		} else if edge.Target == nodeID {
+			neighbors = append(neighbors, edge.Source)
+		}
+	}
+	
+	// If all neighbors are grouped devices, then this node is only reachable through groups
+	for _, neighbor := range neighbors {
+		if !groupedDeviceIDs[neighbor] {
+			return false // Found a non-grouped neighbor
+		}
+	}
+	
+	return len(neighbors) > 0 // Only return true if there are neighbors (avoid isolated nodes)
 }

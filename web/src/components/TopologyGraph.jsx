@@ -14,6 +14,7 @@ const DEVICE_COLORS = {
   distribution: '#2ecc71',
   access: '#9b59b6',
   server: '#95a5a6',
+  group: '#95a5a6',
   unknown: '#95a5a6'
 }
 
@@ -41,7 +42,7 @@ function TopologyGraph({ topology, onObjectSelect }) {
     const elements = [
       ...topology.nodes.map(node => ({
         data: {
-          id: node.name,
+          id: node.id,  // node.name ではなく node.id を使用
           label: node.name,
           type: node.type,
           hardware: node.hardware,
@@ -52,7 +53,7 @@ function TopologyGraph({ topology, onObjectSelect }) {
       })),
       ...topology.edges.map(edge => ({
         data: {
-          id: `${edge.source}-${edge.target}`,
+          id: edge.id,  // エッジIDも統一
           source: edge.source,
           target: edge.target,
           localPort: edge.local_port,
@@ -78,10 +79,30 @@ function TopologyGraph({ topology, onObjectSelect }) {
             'font-weight': 'bold',
             'text-outline-width': 2,
             'text-outline-color': '#000',
-            'width': (ele) => ele.data('isRoot') ? 60 : 50,
-            'height': (ele) => ele.data('isRoot') ? 60 : 50,
+            'width': (ele) => {
+              if (ele.data('isRoot')) return 60
+              if (ele.data('type') === 'group') return 80
+              return 50
+            },
+            'height': (ele) => {
+              if (ele.data('isRoot')) return 60
+              if (ele.data('type') === 'group') return 50
+              return 50
+            },
+            'shape': (ele) => ele.data('type') === 'group' ? 'round-rectangle' : 'ellipse',
             'border-width': (ele) => ele.data('isRoot') ? 4 : 2,
             'border-color': (ele) => ele.data('isRoot') ? '#f39c12' : '#333'
+          }
+        },
+        {
+          selector: 'node[type="group"]',
+          style: {
+            'background-color': '#95a5a6',
+            'border-color': '#7f8c8d',
+            'border-width': 3,
+            'font-size': '10px',
+            'text-wrap': 'wrap',
+            'text-max-width': '70px'
           }
         },
         {
@@ -132,6 +153,22 @@ function TopologyGraph({ topology, onObjectSelect }) {
       if (onObjectSelect) {
         onObjectSelect({
           type: 'node',
+          data: data
+        })
+      }
+    })
+
+    // グループノードのダブルクリック処理
+    cy.on('dblclick', 'node[type="group"]', function(evt) {
+      const node = evt.target
+      const data = node.data()
+      
+      console.log('Group double-clicked:', data)
+      
+      // グループの展開機能を実装する場合
+      if (onObjectSelect) {
+        onObjectSelect({
+          type: 'group-expand',
           data: data
         })
       }

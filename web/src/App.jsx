@@ -14,6 +14,14 @@ function App() {
   const [depth, setDepth] = useState(3)
   const [selectedObject, setSelectedObject] = useState(null)
   const [activeTab, setActiveTab] = useState('topology')
+  const [groupingOptions, setGroupingOptions] = useState({
+    enabled: true,  // デフォルトでグルーピングを有効化
+    groupByPrefix: true,
+    groupByType: false,
+    minGroupSize: 3,
+    maxGroupDepth: 2,
+    prefixMinLen: 3
+  })
 
   // URLパラメータからデバイスIDを読み込み
   useEffect(() => {
@@ -29,7 +37,7 @@ function App() {
       // URLパラメータでデバイスが指定されている場合は自動で可視化実行
       fetchTopology(deviceParam, depthParam ? parseInt(depthParam) : depth)
     }
-  }, [])
+  }, [groupingOptions])
 
   const fetchTopology = async (hostname, explorationDepth = 3) => {
     if (!hostname) return
@@ -38,8 +46,18 @@ function App() {
     setError(null)
 
     try {
-      // 新しいAPI形式: /api/topology/{deviceId}?depth=N
-      const response = await fetch(`/api/topology/${encodeURIComponent(hostname)}?depth=${explorationDepth}`)
+      // グルーピングパラメータを構築
+      const params = new URLSearchParams({
+        depth: explorationDepth.toString(),
+        enable_grouping: groupingOptions.enabled.toString(),
+        min_group_size: groupingOptions.minGroupSize.toString(),
+        max_group_depth: groupingOptions.maxGroupDepth.toString(),
+        group_by_prefix: groupingOptions.groupByPrefix.toString(),
+        group_by_type: groupingOptions.groupByType.toString(),
+        prefix_min_len: groupingOptions.prefixMinLen.toString()
+      })
+
+      const response = await fetch(`/api/topology/${encodeURIComponent(hostname)}?${params}`)
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -77,6 +95,14 @@ function App() {
     setSelectedObject(null)
   }
 
+  const handleGroupingChange = (newGroupingOptions) => {
+    setGroupingOptions(newGroupingOptions)
+    // グルーピング設定が変更されたら再取得
+    if (selectedDevice) {
+      fetchTopology(selectedDevice, depth)
+    }
+  }
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'topology':
@@ -101,6 +127,7 @@ function App() {
                   <div className="topology-stats">
                     <span>Nodes: {topology.stats.total_nodes}</span>
                     <span>Edges: {topology.stats.total_edges}</span>
+                    {topology.stats.total_groups > 0 && <span>Groups: {topology.stats.total_groups}</span>}
                     <span>Root: {topology.root_device}</span>
                     <span>Depth: {topology.depth}</span>
                   </div>
@@ -169,6 +196,8 @@ function App() {
             depth={depth}
             onDepthChange={handleDepthChange}
             loading={loading}
+            groupingOptions={groupingOptions}
+            onGroupingChange={handleGroupingChange}
           />
         )}
       </header>

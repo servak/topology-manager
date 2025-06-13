@@ -31,12 +31,27 @@ func (h *VisualizationHandler) Register(api huma.API) {
 }
 
 func (h *VisualizationHandler) GetTopology(ctx context.Context, input *struct {
-	DeviceID string `path:"deviceId"`
-	Depth    int    `query:"depth" default:"3"`
+	DeviceID         string `path:"deviceId"`
+	Depth            int    `query:"depth" default:"3"`
+	EnableGrouping   bool   `query:"enable_grouping" default:"true"`
+	MinGroupSize     int    `query:"min_group_size" default:"3"`
+	MaxGroupDepth    int    `query:"max_group_depth" default:"2"`
+	GroupByPrefix    bool   `query:"group_by_prefix" default:"true"`
+	GroupByType      bool   `query:"group_by_type" default:"false"`
+	PrefixMinLen     int    `query:"prefix_min_len" default:"3"`
 }) (*struct {
 	Body visualization.VisualTopology
 }, error) {
-	visualTopology, err := h.visualizationService.GetVisualTopology(ctx, input.DeviceID, input.Depth)
+	groupingOpts := visualization.GroupingOptions{
+		Enabled:       input.EnableGrouping,
+		MinGroupSize:  input.MinGroupSize,
+		MaxDepth:      input.MaxGroupDepth,
+		GroupByPrefix: input.GroupByPrefix,
+		GroupByType:   input.GroupByType,
+		PrefixMinLen:  input.PrefixMinLen,
+	}
+
+	visualTopology, err := h.visualizationService.GetVisualTopologyWithGrouping(ctx, input.DeviceID, input.Depth, groupingOpts)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Failed to get visual topology", err)
 	}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { FormContainer, FormGrid, FormGroup, FormInput, FormSelect, FormButton } from './common/FormStyles'
 
-function DeviceSelector({ onDeviceSelect, selectedDevice, depth, onDepthChange, loading }) {
+function DeviceSelector({ onDeviceSelect, selectedDevice, depth, onDepthChange, loading, groupingOptions, onGroupingChange }) {
   const [inputValue, setInputValue] = useState(selectedDevice)
   const [searchResults, setSearchResults] = useState([])
   const [isSearching, setIsSearching] = useState(false)
@@ -120,9 +120,27 @@ function DeviceSelector({ onDeviceSelect, selectedDevice, depth, onDepthChange, 
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const handleGroupingToggle = (e) => {
+    if (onGroupingChange) {
+      onGroupingChange({
+        ...groupingOptions,
+        enabled: e.target.checked
+      })
+    }
+  }
+
+  const handleGroupingOptionChange = (option, value) => {
+    if (onGroupingChange) {
+      onGroupingChange({
+        ...groupingOptions,
+        [option]: value
+      })
+    }
+  }
+
   return (
     <FormContainer onSubmit={handleSubmit}>
-      <FormGrid columns={3}>
+      <FormGrid columns={5}>
         <FormGroup label="デバイスID" htmlFor="deviceId">
           <div className="autocomplete-container" ref={dropdownRef} style={{ position: 'relative' }}>
             <FormInput
@@ -196,6 +214,78 @@ function DeviceSelector({ onDeviceSelect, selectedDevice, depth, onDepthChange, 
             <option value={4}>4ホップ</option>
             <option value={5}>5ホップ</option>
           </FormSelect>
+        </FormGroup>
+
+        <FormGroup label="スマートグルーピング" htmlFor="grouping">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', fontSize: '14px' }}>
+              <input
+                type="checkbox"
+                checked={groupingOptions?.enabled || false}
+                onChange={handleGroupingToggle}
+                style={{ marginRight: '8px' }}
+              />
+              大規模トポロジー対応
+            </label>
+            {groupingOptions?.enabled ? (
+              <div style={{ fontSize: '12px', color: '#666' }}>
+                <label style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+                  <input
+                    type="checkbox"
+                    checked={groupingOptions?.groupByPrefix || false}
+                    onChange={(e) => handleGroupingOptionChange('groupByPrefix', e.target.checked)}
+                    style={{ marginRight: '6px' }}
+                  />
+                  共通プレフィックス
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={groupingOptions?.groupByType || false}
+                    onChange={(e) => handleGroupingOptionChange('groupByType', e.target.checked)}
+                    style={{ marginRight: '6px' }}
+                  />
+                  デバイスタイプ
+                </label>
+              </div>
+            ) : (
+              <div style={{ fontSize: '11px', color: '#e74c3c', marginTop: '4px' }}>
+                ⚠️ 大規模ネットワークでは表示が重くなる可能性があります
+              </div>
+            )}
+          </div>
+        </FormGroup>
+
+        <FormGroup label="表示最適化" htmlFor="groupSettings">
+          {groupingOptions?.enabled && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '12px', color: '#666' }}>
+                集約閾値:
+                <FormSelect
+                  value={groupingOptions?.minGroupSize || 3}
+                  onChange={(e) => handleGroupingOptionChange('minGroupSize', parseInt(e.target.value))}
+                  style={{ marginLeft: '4px', fontSize: '12px', padding: '2px' }}
+                >
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                  <option value={4}>4</option>
+                  <option value={5}>5</option>
+                </FormSelect>
+              </label>
+              <label style={{ fontSize: '12px', color: '#666' }}>
+                集約開始深度:
+                <FormSelect
+                  value={groupingOptions?.maxGroupDepth || 2}
+                  onChange={(e) => handleGroupingOptionChange('maxGroupDepth', parseInt(e.target.value))}
+                  style={{ marginLeft: '4px', fontSize: '12px', padding: '2px' }}
+                >
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                </FormSelect>
+              </label>
+            </div>
+          )}
         </FormGroup>
         
         <FormGroup label=" " htmlFor="submit">
