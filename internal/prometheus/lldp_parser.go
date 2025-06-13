@@ -345,6 +345,11 @@ func (p *LLDPParser) normalizePortName(portName string) string {
 		}
 	}
 
+	// Truncate to fit database constraints (VARCHAR(255))
+	if len(portName) > 255 {
+		portName = portName[:252] + "..."
+	}
+
 	return portName
 }
 

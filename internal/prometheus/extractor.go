@@ -193,10 +193,18 @@ func (e *MetricsExtractor) tryExtractLinks(ctx context.Context, mapping MetricMa
 		}
 
 		if sourcePort, exists := e.extractLabelValue(sample.Metric, mapping.Labels, "source_port"); exists && sourcePort != "" {
+			// Truncate to fit database constraints (VARCHAR(255))
+			if len(sourcePort) > 255 {
+				sourcePort = sourcePort[:252] + "..."
+			}
 			link.SourcePort = sourcePort
 		}
 
 		if targetPort, exists := e.extractLabelValue(sample.Metric, mapping.Labels, "target_port"); exists && targetPort != "" {
+			// Truncate to fit database constraints (VARCHAR(255))
+			if len(targetPort) > 255 {
+				targetPort = targetPort[:252] + "..."
+			}
 			link.TargetPort = targetPort
 		}
 
