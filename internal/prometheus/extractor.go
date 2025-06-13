@@ -323,9 +323,8 @@ func (e *MetricsExtractor) hasRequiredLinkFields(link topology.Link, required []
 
 // fillMissingDeviceFields fills missing optional fields with default values
 func (e *MetricsExtractor) fillMissingDeviceFields(device topology.Device) topology.Device {
-	if device.IPAddress == "" {
-		device.IPAddress = "unknown"
-	}
+	// Skip setting IPAddress to "unknown" since PostgreSQL INET type doesn't accept it
+	// Leave it empty if not available from metrics
 	if device.Hardware == "" {
 		device.Hardware = "unknown"
 	}
