@@ -77,7 +77,6 @@ func (r *Neo4jRepository) AddDevice(ctx context.Context, device topology.Device)
 			"type":       device.Type,
 			"hardware":   device.Hardware,
 			"instance":   device.Instance,
-			"ip_address": device.IPAddress,
 			"location":   device.Location,
 			"status":     device.Status,
 			"layer":      device.Layer,
@@ -116,17 +115,17 @@ func (r *Neo4jRepository) AddLink(ctx context.Context, link topology.Link) error
 
 	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
 		return tx.Run(ctx, query, map[string]interface{}{
-			"source_id":    link.SourceID,
-			"target_id":    link.TargetID,
-			"id":           link.ID,
-			"source_port":  link.SourcePort,
-			"target_port":  link.TargetPort,
-			"weight":       link.Weight,
-			"status":       link.Status,
-			"metadata":     link.Metadata,
-			"last_seen":    link.LastSeen.Format("2006-01-02T15:04:05Z"),
-			"created_at":   link.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			"updated_at":   link.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+			"source_id":   link.SourceID,
+			"target_id":   link.TargetID,
+			"id":          link.ID,
+			"source_port": link.SourcePort,
+			"target_port": link.TargetPort,
+			"weight":      link.Weight,
+			"status":      link.Status,
+			"metadata":    link.Metadata,
+			"last_seen":   link.LastSeen.Format("2006-01-02T15:04:05Z"),
+			"created_at":  link.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			"updated_at":  link.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 		})
 	})
 
@@ -279,7 +278,6 @@ func (r *Neo4jRepository) BulkAddDevices(ctx context.Context, devices []topology
 				"type":       device.Type,
 				"hardware":   device.Hardware,
 				"instance":   device.Instance,
-				"ip_address": device.IPAddress,
 				"location":   device.Location,
 				"status":     device.Status,
 				"layer":      device.Layer,
@@ -325,17 +323,17 @@ func (r *Neo4jRepository) BulkAddLinks(ctx context.Context, links []topology.Lin
 			`
 
 			_, err := tx.Run(ctx, query, map[string]interface{}{
-				"source_id":    link.SourceID,
-				"target_id":    link.TargetID,
-				"id":           link.ID,
-				"source_port":  link.SourcePort,
-				"target_port":  link.TargetPort,
-				"weight":       link.Weight,
-				"status":       link.Status,
-				"metadata":     link.Metadata,
-				"last_seen":    link.LastSeen.Format("2006-01-02T15:04:05Z"),
-				"created_at":   link.CreatedAt.Format("2006-01-02T15:04:05Z"),
-				"updated_at":   link.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+				"source_id":   link.SourceID,
+				"target_id":   link.TargetID,
+				"id":          link.ID,
+				"source_port": link.SourcePort,
+				"target_port": link.TargetPort,
+				"weight":      link.Weight,
+				"status":      link.Status,
+				"metadata":    link.Metadata,
+				"last_seen":   link.LastSeen.Format("2006-01-02T15:04:05Z"),
+				"created_at":  link.CreatedAt.Format("2006-01-02T15:04:05Z"),
+				"updated_at":  link.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 			})
 
 			if err != nil {
@@ -458,7 +456,7 @@ func (r *Neo4jRepository) FindShortestPath(ctx context.Context, fromID, toID str
 // Helper methods for data conversion
 func (r *Neo4jRepository) nodeToDevice(node neo4j.Node) (*topology.Device, error) {
 	props := node.Props
-	
+
 	// Extract and validate required fields
 	id, ok := props["id"].(string)
 	if !ok {
@@ -478,9 +476,6 @@ func (r *Neo4jRepository) nodeToDevice(node neo4j.Node) (*topology.Device, error
 	}
 	if instance, ok := props["instance"].(string); ok {
 		device.Instance = instance
-	}
-	if ipAddress, ok := props["ip_address"].(string); ok {
-		device.IPAddress = ipAddress
 	}
 	if location, ok := props["location"].(string); ok {
 		device.Location = location

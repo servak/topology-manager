@@ -78,13 +78,12 @@ func (r *PostgresRepository) AddDevice(ctx context.Context, device topology.Devi
 	}
 
 	query := `
-		INSERT INTO devices (id, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO devices (id, type, hardware, instance, location, status, layer, metadata, last_seen)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (id) DO UPDATE SET
 			type = EXCLUDED.type,
 			hardware = EXCLUDED.hardware,
 			instance = EXCLUDED.instance,
-			ip_address = EXCLUDED.ip_address,
 			location = EXCLUDED.location,
 			status = EXCLUDED.status,
 			layer = EXCLUDED.layer,
@@ -92,17 +91,9 @@ func (r *PostgresRepository) AddDevice(ctx context.Context, device topology.Devi
 			last_seen = EXCLUDED.last_seen,
 			updated_at = CURRENT_TIMESTAMP`
 
-	// Handle empty IP address by converting to nil for PostgreSQL INET type
-	var ipAddress interface{}
-	if device.IPAddress != "" {
-		ipAddress = device.IPAddress
-	} else {
-		ipAddress = nil
-	}
-
 	_, err = r.db.ExecContext(ctx, query,
 		device.ID, device.Type, device.Hardware, device.Instance,
-		ipAddress, device.Location, device.Status, device.Layer,
+		device.Location, device.Status, device.Layer,
 		metadataJSON, device.LastSeen)
 
 	return err
@@ -139,22 +130,14 @@ func (r *PostgresRepository) UpdateDevice(ctx context.Context, device topology.D
 
 	query := `
 		UPDATE devices SET
-			type = $2, hardware = $3, instance = $4, ip_address = $5,
-			location = $6, status = $7, layer = $8, metadata = $9, last_seen = $10,
+			type = $2, hardware = $3, instance = $4,
+			location = $5, status = $6, layer = $7, metadata = $8, last_seen = $9,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1`
 
-	// Handle empty IP address by converting to nil for PostgreSQL INET type
-	var ipAddress interface{}
-	if device.IPAddress != "" {
-		ipAddress = device.IPAddress
-	} else {
-		ipAddress = nil
-	}
-
 	result, err := r.db.ExecContext(ctx, query,
 		device.ID, device.Type, device.Hardware, device.Instance,
-		ipAddress, device.Location, device.Status, device.Layer,
+		device.Location, device.Status, device.Layer,
 		metadataJSON, device.LastSeen)
 
 	if err != nil {
@@ -241,14 +224,14 @@ func (r *PostgresRepository) RemoveLink(ctx context.Context, linkID string) erro
 }
 
 func (r *PostgresRepository) GetDevice(ctx context.Context, deviceID string) (*topology.Device, error) {
-	query := `SELECT id, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE id = $1`
+	query := `SELECT id, type, hardware, instance, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE id = $1`
 
 	var device topology.Device
 	var metadataJSON []byte
 
 	err := r.db.QueryRowContext(ctx, query, deviceID).Scan(
 		&device.ID, &device.Type, &device.Hardware, &device.Instance,
-		&device.IPAddress, &device.Location, &device.Status, &device.Layer,
+		&device.Location, &device.Status, &device.Layer,
 		&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
 
 	if err != nil {
@@ -275,11 +258,10 @@ func (r *PostgresRepository) SearchDevices(ctx context.Context, query string, li
 	}
 
 	sqlQuery := `
-		SELECT id, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at 
+		SELECT id, type, hardware, instance, location, status, layer, metadata, last_seen, created_at, updated_at 
 		FROM devices 
 		WHERE 
 			id ILIKE $1 OR 
-			ip_address::text ILIKE $1 OR
 			hardware ILIKE $1
 		ORDER BY 
 			CASE 
@@ -307,7 +289,7 @@ func (r *PostgresRepository) SearchDevices(ctx context.Context, query string, li
 
 		err := rows.Scan(
 			&device.ID, &device.Type, &device.Hardware, &device.Instance,
-			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
+			&device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
 
 		if err != nil {
@@ -349,7 +331,7 @@ func (r *PostgresRepository) GetLink(ctx context.Context, linkID string) (*topol
 }
 
 func (r *PostgresRepository) FindDevicesByType(ctx context.Context, deviceType string) ([]topology.Device, error) {
-	query := `SELECT id, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE type = $1`
+	query := `SELECT id, type, hardware, instance, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE type = $1`
 
 	rows, err := r.db.QueryContext(ctx, query, deviceType)
 	if err != nil {
@@ -364,7 +346,7 @@ func (r *PostgresRepository) FindDevicesByType(ctx context.Context, deviceType s
 
 		err := rows.Scan(
 			&device.ID, &device.Type, &device.Hardware, &device.Instance,
-			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
+			&device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
 
 		if err != nil {
@@ -382,7 +364,7 @@ func (r *PostgresRepository) FindDevicesByType(ctx context.Context, deviceType s
 }
 
 func (r *PostgresRepository) FindDevicesByHardware(ctx context.Context, hardware string) ([]topology.Device, error) {
-	query := `SELECT id, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE hardware ILIKE $1`
+	query := `SELECT id, type, hardware, instance, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE hardware ILIKE $1`
 
 	rows, err := r.db.QueryContext(ctx, query, "%"+hardware+"%")
 	if err != nil {
@@ -397,7 +379,7 @@ func (r *PostgresRepository) FindDevicesByHardware(ctx context.Context, hardware
 
 		err := rows.Scan(
 			&device.ID, &device.Type, &device.Hardware, &device.Instance,
-			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
+			&device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
 
 		if err != nil {
@@ -415,7 +397,7 @@ func (r *PostgresRepository) FindDevicesByHardware(ctx context.Context, hardware
 }
 
 func (r *PostgresRepository) FindDevicesByInstance(ctx context.Context, instance string) ([]topology.Device, error) {
-	query := `SELECT id, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE instance = $1`
+	query := `SELECT id, type, hardware, instance, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE instance = $1`
 
 	rows, err := r.db.QueryContext(ctx, query, instance)
 	if err != nil {
@@ -430,7 +412,7 @@ func (r *PostgresRepository) FindDevicesByInstance(ctx context.Context, instance
 
 		err := rows.Scan(
 			&device.ID, &device.Type, &device.Hardware, &device.Instance,
-			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
+			&device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
 
 		if err != nil {
@@ -543,7 +525,7 @@ func (r *PostgresRepository) bulkAddDevicesBatch(ctx context.Context, devices []
 
 	// COPY形式でバルクインサート
 	valueStrings := make([]string, 0, len(devices))
-	valueArgs := make([]interface{}, 0, len(devices)*10)
+	valueArgs := make([]interface{}, 0, len(devices)*9)
 
 	for i, device := range devices {
 		metadataJSON, err := json.Marshal(device.Metadata)
@@ -551,31 +533,22 @@ func (r *PostgresRepository) bulkAddDevicesBatch(ctx context.Context, devices []
 			return fmt.Errorf("failed to marshal metadata for device %s: %w", device.ID, err)
 		}
 
-		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
-			i*10+1, i*10+2, i*10+3, i*10+4, i*10+5, i*10+6, i*10+7, i*10+8, i*10+9, i*10+10))
-
-		// Handle empty IP address by converting to nil for PostgreSQL INET type
-		var ipAddress interface{}
-		if device.IPAddress != "" {
-			ipAddress = device.IPAddress
-		} else {
-			ipAddress = nil
-		}
+		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			i*9+1, i*9+2, i*9+3, i*9+4, i*9+5, i*9+6, i*9+7, i*9+8, i*9+9))
 
 		valueArgs = append(valueArgs,
 			device.ID, device.Type, device.Hardware, device.Instance,
-			ipAddress, device.Location, device.Status, device.Layer,
+			device.Location, device.Status, device.Layer,
 			metadataJSON, device.LastSeen)
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO devices (id, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen)
+		INSERT INTO devices (id, type, hardware, instance, location, status, layer, metadata, last_seen)
 		VALUES %s
 		ON CONFLICT (id) DO UPDATE SET
 			type = EXCLUDED.type,
 			hardware = EXCLUDED.hardware,
 			instance = EXCLUDED.instance,
-			ip_address = EXCLUDED.ip_address,
 			location = EXCLUDED.location,
 			status = EXCLUDED.status,
 			layer = EXCLUDED.layer,
@@ -673,7 +646,7 @@ func (r *PostgresRepository) FindReachableDevices(ctx context.Context, deviceID 
 			-- 起点デバイス
 			SELECT 
 				d.id, d.type, d.hardware, d.instance,
-				d.ip_address, d.location, d.status, d.layer,
+				d.location, d.status, d.layer,
 				d.metadata, d.last_seen, d.created_at, d.updated_at,
 				0 as hop_count,
 				d.id::text as path
@@ -685,7 +658,7 @@ func (r *PostgresRepository) FindReachableDevices(ctx context.Context, deviceID 
 			-- 隣接デバイス（BFS: レベル順）
 			SELECT 
 				d.id, d.type, d.hardware, d.instance,
-				d.ip_address, d.location, d.status, d.layer,
+				d.location, d.status, d.layer,
 				d.metadata, d.last_seen, d.created_at, d.updated_at,
 				r.hop_count + 1,
 				r.path || ',' || d.id::text
@@ -699,7 +672,7 @@ func (r *PostgresRepository) FindReachableDevices(ctx context.Context, deviceID 
 			  AND position(',' || d.id::text || ',' in ',' || r.path || ',') = 0
 		)
 		SELECT DISTINCT 
-			id, type, hardware, instance, ip_address, location,
+			id, type, hardware, instance, location,
 			status, layer, metadata, last_seen, created_at, updated_at, hop_count
 		FROM reachability
 		WHERE hop_count > 0  -- 起点デバイス自身は除外
@@ -711,7 +684,7 @@ func (r *PostgresRepository) FindReachableDevices(ctx context.Context, deviceID 
 			-- 起点デバイス
 			SELECT 
 				d.id, d.type, d.hardware, d.instance,
-				d.ip_address, d.location, d.status, d.layer,
+				d.location, d.status, d.layer,
 				d.metadata, d.last_seen, d.created_at, d.updated_at,
 				0 as hop_count,
 				d.id::text as path,
@@ -724,7 +697,7 @@ func (r *PostgresRepository) FindReachableDevices(ctx context.Context, deviceID 
 			-- 隣接デバイス（DFS: 深度優先）
 			SELECT 
 				d.id, d.type, d.hardware, d.instance,
-				d.ip_address, d.location, d.status, d.layer,
+				d.location, d.status, d.layer,
 				d.metadata, d.last_seen, d.created_at, d.updated_at,
 				r.hop_count + 1,
 				r.path || ',' || d.id::text,
@@ -739,7 +712,7 @@ func (r *PostgresRepository) FindReachableDevices(ctx context.Context, deviceID 
 			  AND position(',' || d.id::text || ',' in ',' || r.path || ',') = 0
 		)
 		SELECT DISTINCT 
-			id, type, hardware, instance, ip_address, location,
+			id, type, hardware, instance, location,
 			status, layer, metadata, last_seen, created_at, updated_at, search_order
 		FROM reachability
 		WHERE hop_count > 0  -- 起点デバイス自身は除外
@@ -760,7 +733,7 @@ func (r *PostgresRepository) FindReachableDevices(ctx context.Context, deviceID 
 
 		err := rows.Scan(
 			&device.ID, &device.Type, &device.Hardware, &device.Instance,
-			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
+			&device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt, &orderField)
 
 		if err != nil {
@@ -791,7 +764,7 @@ func (r *PostgresRepository) ExtractSubTopology(ctx context.Context, deviceID st
 		-- 起点デバイス
 		SELECT 
 			d.id, d.type, d.hardware, d.instance, 
-			d.ip_address, d.location, d.status, d.layer, 
+			d.location, d.status, d.layer, 
 			d.metadata, d.last_seen, d.created_at, d.updated_at,
 			0 as level,
 			d.id::text as path -- 循環検出用（文字列として保存）
@@ -803,7 +776,7 @@ func (r *PostgresRepository) ExtractSubTopology(ctx context.Context, deviceID st
 		-- 隣接デバイス（再帰部分）
 		SELECT 
 			d.id, d.type, d.hardware, d.instance,
-			d.ip_address, d.location, d.status, d.layer,
+			d.location, d.status, d.layer,
 			d.metadata, d.last_seen, d.created_at, d.updated_at,
 			tt.level + 1,
 			tt.path || ',' || d.id::text
@@ -817,7 +790,7 @@ func (r *PostgresRepository) ExtractSubTopology(ctx context.Context, deviceID st
 		  AND position(',' || d.id::text || ',' in ',' || tt.path || ',') = 0 -- 循環回避
 	)
 	SELECT DISTINCT 
-		id, type, hardware, instance, ip_address, location, 
+		id, type, hardware, instance, location, 
 		status, layer, metadata, last_seen, created_at, updated_at
 	FROM topology_traversal
 	ORDER BY id`
@@ -837,7 +810,7 @@ func (r *PostgresRepository) ExtractSubTopology(ctx context.Context, deviceID st
 
 		err := rows.Scan(
 			&device.ID, &device.Type, &device.Hardware, &device.Instance,
-			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
+			&device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
 
 		if err != nil {
@@ -920,7 +893,7 @@ func (r *PostgresRepository) FindShortestPath(ctx context.Context, fromID, toID 
 		-- 起点デバイス
 		SELECT 
 			d.id, d.type, d.hardware, d.instance,
-			d.ip_address, d.location, d.status, d.layer,
+			d.location, d.status, d.layer,
 			d.metadata, d.last_seen, d.created_at, d.updated_at,
 			0.0 as total_cost,
 			0 as hop_count,
@@ -934,7 +907,7 @@ func (r *PostgresRepository) FindShortestPath(ctx context.Context, fromID, toID 
 		-- 隣接デバイス（Dijkstra）
 		SELECT 
 			d.id, d.type, d.hardware, d.instance,
-			d.ip_address, d.location, d.status, d.layer,
+			d.location, d.status, d.layer,
 			d.metadata, d.last_seen, d.created_at, d.updated_at,
 			dij.total_cost + l.weight as total_cost,
 			dij.hop_count + 1,
@@ -1088,7 +1061,7 @@ func (r *PostgresRepository) GetDevices(ctx context.Context, opts topology.Pagin
 
 	// データ取得クエリ
 	query := fmt.Sprintf(`
-		SELECT id, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at 
+		SELECT id, type, hardware, instance, location, status, layer, metadata, last_seen, created_at, updated_at 
 		FROM devices %s 
 		ORDER BY %s %s 
 		LIMIT $%d OFFSET $%d`,
@@ -1109,7 +1082,7 @@ func (r *PostgresRepository) GetDevices(ctx context.Context, opts topology.Pagin
 
 		err := rows.Scan(
 			&device.ID, &device.Type, &device.Hardware, &device.Instance,
-			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
+			&device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
 
 		if err != nil {

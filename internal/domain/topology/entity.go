@@ -9,7 +9,6 @@ type Device struct {
 	Type      string            `json:"type" db:"type"`
 	Hardware  string            `json:"hardware" db:"hardware"`
 	Instance  string            `json:"instance" db:"instance"`
-	IPAddress string            `json:"ip_address" db:"ip_address"`
 	Location  string            `json:"location" db:"location"`
 	Status    string            `json:"status" db:"status"`
 	Layer     int               `json:"layer" db:"layer"`

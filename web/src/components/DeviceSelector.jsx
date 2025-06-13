@@ -174,8 +174,8 @@ function DeviceSelector({ onDeviceSelect, selectedDevice, depth, onDepthChange, 
                     onMouseEnter={() => setSelectedIndex(index)}
                   >
                     <div style={{ fontWeight: 'bold' }}>{device.id}</div>
-                    {device.ip_address && (
-                      <div style={{ fontSize: '11px', color: '#999' }}>{device.ip_address}</div>
+                    {device.hardware && (
+                      <div style={{ fontSize: '11px', color: '#999' }}>{device.hardware}</div>
                     )}
                   </div>
                 ))}

@@ -134,10 +134,6 @@ func (e *MetricsExtractor) tryExtractDevices(ctx context.Context, mapping Metric
 			continue // Skip if no device ID
 		}
 
-		if ipAddress, exists := e.extractLabelValue(sample.Metric, mapping.Labels, "ip_address"); exists && ipAddress != "" {
-			device.IPAddress = ipAddress
-		}
-
 		if hardware, exists := e.extractLabelValue(sample.Metric, mapping.Labels, "hardware"); exists && hardware != "" {
 			device.Hardware = hardware
 		}
@@ -285,10 +281,6 @@ func (e *MetricsExtractor) hasRequiredFields(device topology.Device, required []
 		switch field {
 		case "device_id":
 			if device.ID == "" {
-				return false
-			}
-		case "ip_address":
-			if device.IPAddress == "" {
 				return false
 			}
 		case "hardware":

@@ -79,12 +79,6 @@ function NodeDetails({ data }) {
           <span className="label">Device ID:</span>
           <span className="value monospace">{data.id}</span>
         </div>
-        {data.ipAddress && (
-          <div className="detail-row">
-            <span className="label">IP Address:</span>
-            <span className="value monospace">{data.ipAddress}</span>
-          </div>
-        )}
         {data.location && (
           <div className="detail-row">
             <span className="label">Location:</span>

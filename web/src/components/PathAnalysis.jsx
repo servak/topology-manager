@@ -185,10 +185,6 @@ function PathAnalysis() {
                         <span className="detail-value">{device.hardware}</span>
                       </div>
                       <div className="detail-row">
-                        <span className="detail-label">IPアドレス:</span>
-                        <span className="detail-value">{device.ip_address}</span>
-                      </div>
-                      <div className="detail-row">
                         <span className="detail-label">レイヤー:</span>
                         <span className="detail-value">{device.layer}</span>
                       </div>

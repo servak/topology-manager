@@ -136,17 +136,11 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 		for i := 0; i < deviceCountForType && deviceIndex < count; i++ {
 			deviceID := fmt.Sprintf("%s-%03d", deviceType.prefix, i+1)
 
-			// IPアドレス生成 (各オクテットが255を超えないように調整)
-			subnet := (i / 254) + 1
-			host := (i % 254) + 1
-			ipAddress := fmt.Sprintf("10.%d.%d.%d", deviceType.layer, subnet, host)
-
 			device := topology.Device{
-				ID:        deviceID,
-				Type:      deviceType.typeName,
-				Hardware:  deviceType.hardware,
-				Instance:  fmt.Sprintf("dc1.%s", deviceType.prefix),
-				IPAddress: ipAddress,
+				ID:       deviceID,
+				Type:     deviceType.typeName,
+				Hardware: deviceType.hardware,
+				Instance: fmt.Sprintf("dc1.%s", deviceType.prefix),
 				Location:  fmt.Sprintf("Rack-%d", (i/10)+1),
 				Status:    "up",
 				Layer:     deviceType.layer,

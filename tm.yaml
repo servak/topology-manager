@@ -59,7 +59,6 @@ prometheus:
         metric_name: "snmp_device_info"
         labels:
           device_id: "instance"       # PrometheusラベルからdeviceIDを取得
-          ip_address: "instance"      # IPアドレス
           hardware: "sysDescr"        # ハードウェア情報
           location: "sysLocation"     # 場所情報
       
@@ -68,14 +67,12 @@ prometheus:
         - metric_name: "node_uname_info"  # node_exporterメトリクス
           labels:
             device_id: "instance"
-            ip_address: "instance"
             hardware: "machine"
             location: ""              # このメトリクスには場所情報がない
         
         - metric_name: "lldp_local_info"  # LLDPローカル情報
           labels:
             device_id: "chassis_id"
-            ip_address: "mgmt_address"
             hardware: "system_description"
             location: "system_location"
     
@@ -101,7 +98,7 @@ prometheus:
   field_requirements:
     device_info:
       required: ["device_id"]  # 最低限これがないとスキップ
-      optional: ["ip_address", "hardware", "location"]
+      optional: ["hardware", "location"]
     lldp_neighbors:
       required: ["source_device", "target_device"]  # リンクの必須フィールド
       optional: ["source_port", "target_port"]

@@ -3,7 +3,6 @@ package prometheus
 import (
 	"context"
 	"fmt"
-	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -40,7 +39,6 @@ type LLDPNeighbor struct {
 type DeviceInfo struct {
 	DeviceID     string
 	Hostname     string
-	IPAddress    string
 	SystemDesc   string
 	Location     string
 	Contact      string
@@ -97,7 +95,6 @@ func (p *LLDPParser) ParseDeviceInfo(ctx context.Context) ([]DeviceInfo, error) 
 		device := DeviceInfo{
 			DeviceID:   r.Metric["instance"],
 			Hostname:   r.Metric["hostname"],
-			IPAddress:  r.Metric["ip_address"],
 			SystemDesc: r.Metric["system_desc"],
 			Location:   r.Metric["location"],
 			Contact:    r.Metric["contact"],
@@ -139,10 +136,7 @@ func (p *LLDPParser) BuildTopologyFromLLDP(ctx context.Context) ([]topology.Devi
 	// Create device map for quick lookup
 	deviceMap := make(map[string]DeviceInfo)
 	for _, device := range deviceInfos {
-		// Index by both IP and hostname
-		if device.IPAddress != "" {
-			deviceMap[device.IPAddress] = device
-		}
+		// Index by hostname and device ID
 		if device.Hostname != "" {
 			deviceMap[device.Hostname] = device
 		}
@@ -261,11 +255,6 @@ func (p *LLDPParser) resolveDeviceID(identifier string, deviceMap map[string]Dev
 		return device.DeviceID
 	}
 
-	// Try IP address resolution
-	if ip := net.ParseIP(identifier); ip != nil {
-		return identifier
-	}
-
 	// Clean and return identifier
 	return p.cleanSystemName(identifier)
 }
@@ -284,9 +273,6 @@ func (p *LLDPParser) createDeviceFromInfo(deviceID, identifier string, deviceMap
 
 	// Fill in additional info if available
 	if deviceInfo, exists := deviceMap[identifier]; exists {
-		if deviceInfo.IPAddress != "" {
-			device.IPAddress = deviceInfo.IPAddress
-		}
 		if deviceInfo.SystemDesc != "" {
 			device.Hardware = p.extractHardwareFromDesc(deviceInfo.SystemDesc)
 		}

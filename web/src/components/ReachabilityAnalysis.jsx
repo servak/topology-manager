@@ -120,7 +120,6 @@ function ReachabilityAnalysis() {
                   <th>デバイス名</th>
                   <th>タイプ</th>
                   <th>ハードウェア</th>
-                  <th>IPアドレス</th>
                   <th>レイヤー</th>
                   <th>ステータス</th>
                   <th>場所</th>
@@ -141,7 +140,6 @@ function ReachabilityAnalysis() {
                       </span>
                     </td>
                     <td className="hardware-cell">{device.hardware}</td>
-                    <td className="ip-cell">{device.ip_address}</td>
                     <td className="layer-cell">
                       <span className="layer-badge">{device.layer}</span>
                     </td>
