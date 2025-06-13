@@ -24,9 +24,9 @@ func Execute() error {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "config file path")
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "tm.yaml", "config file path")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
-	
+
 	rootCmd.AddCommand(apiCmd)
 	// rootCmd.AddCommand(workerCmd) // TODO: 後で実装
 	rootCmd.AddCommand(migrateCmd)

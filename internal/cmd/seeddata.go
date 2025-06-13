@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
-	"github.com/spf13/cobra"
+	"github.com/servak/topology-manager/internal/config"
 	"github.com/servak/topology-manager/internal/domain/topology"
+	"github.com/servak/topology-manager/internal/repository"
 	"github.com/servak/topology-manager/internal/repository/postgres"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -30,19 +31,13 @@ func init() {
 }
 
 func runSeedData(cmd *cobra.Command, args []string) {
-	// PostgreSQL DSN を環境変数から取得
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://topology:topology@localhost/topology_manager?sslmode=disable"
-		if verbose {
-			log.Printf("Using default database URL (set DATABASE_URL to override)")
-		}
-	}
-
-	// PostgreSQLリポジトリの初期化
-	repo, err := postgres.NewPostgresRepository(dsn)
+	config, err := config.LoadConfig(configPath)
 	if err != nil {
-		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+		log.Fatalf("Failed to load config: %v", err)
+	}
+	repo, err := repository.NewDatabase(&config.Database)
+	if err != nil {
+		log.Fatalf("Failed to create database: %v", err)
 	}
 	defer repo.Close()
 
@@ -63,9 +58,9 @@ func runSeedData(cmd *cobra.Command, args []string) {
 
 	// サンプルデータの生成
 	log.Printf("Generating %d devices with links...", deviceCount)
-	
+
 	devices, links := generateSampleData(deviceCount)
-	
+
 	// デバイスの一括追加
 	if err := repo.BulkAddDevices(ctx, devices); err != nil {
 		log.Fatalf("Failed to add devices: %v", err)
@@ -81,16 +76,21 @@ func runSeedData(cmd *cobra.Command, args []string) {
 	log.Println("Sample data generation completed successfully")
 }
 
-func clearData(ctx context.Context, repo *postgres.PostgresRepository) error {
-	// リンクを先に削除（外部キー制約のため）
-	if _, err := repo.DB().ExecContext(ctx, "DELETE FROM links"); err != nil {
-		return fmt.Errorf("failed to clear links: %w", err)
+func clearData(ctx context.Context, repo topology.Repository) error {
+	// PostgreSQL専用の実装
+	if pgRepo, ok := repo.(*postgres.PostgresRepository); ok {
+		// リンクを先に削除（外部キー制約のため）
+		if _, err := pgRepo.DB().ExecContext(ctx, "DELETE FROM links"); err != nil {
+			return fmt.Errorf("failed to clear links: %w", err)
+		}
+
+		if _, err := pgRepo.DB().ExecContext(ctx, "DELETE FROM devices"); err != nil {
+			return fmt.Errorf("failed to clear devices: %w", err)
+		}
+	} else {
+		return fmt.Errorf("clear data is only supported for PostgreSQL repositories")
 	}
-	
-	if _, err := repo.DB().ExecContext(ctx, "DELETE FROM devices"); err != nil {
-		return fmt.Errorf("failed to clear devices: %w", err)
-	}
-	
+
 	return nil
 }
 
@@ -135,12 +135,12 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 
 		for i := 0; i < deviceCountForType && deviceIndex < count; i++ {
 			deviceID := fmt.Sprintf("%s-%03d", deviceType.prefix, i+1)
-			
+
 			// IPアドレス生成 (各オクテットが255を超えないように調整)
 			subnet := (i / 254) + 1
 			host := (i % 254) + 1
 			ipAddress := fmt.Sprintf("10.%d.%d.%d", deviceType.layer, subnet, host)
-			
+
 			device := topology.Device{
 				ID:        deviceID,
 				Name:      deviceID,
@@ -175,19 +175,19 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 	// 各Distributionは2つのCoreに冗長接続、各Coreは最大32ポート使用
 	maxCoreConnections := 32
 	coresPerDist := 2
-	
+
 	for i, distDevice := range distDevices {
 		connectionsCount := 0
-		
+
 		// 各DistributionはプライマリとセカンダリのCoreに接続
 		primaryCoreIndex := i % len(coreDevices)
 		secondaryCoreIndex := (i + 1) % len(coreDevices)
-		
+
 		// プライマリCore接続
 		if connectionsCount < coresPerDist && primaryCoreIndex < len(coreDevices) {
 			coreDevice := coreDevices[primaryCoreIndex]
 			corePortNum := (i % maxCoreConnections) + 1
-			
+
 			linkID := fmt.Sprintf("link-%03d", linkIndex)
 			link := topology.Link{
 				ID:         linkID,
@@ -198,8 +198,8 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				Weight:     1.0,
 				Status:     "up",
 				Metadata: map[string]string{
-					"link_type": "core-distribution",
-					"speed":     "100G",
+					"link_type":  "core-distribution",
+					"speed":      "100G",
 					"redundancy": "primary",
 				},
 				LastSeen:  now,
@@ -210,12 +210,12 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 			linkIndex++
 			connectionsCount++
 		}
-		
+
 		// セカンダリCore接続（冗長化）
 		if connectionsCount < coresPerDist && secondaryCoreIndex < len(coreDevices) && secondaryCoreIndex != primaryCoreIndex {
 			coreDevice := coreDevices[secondaryCoreIndex]
 			corePortNum := (i % maxCoreConnections) + 1
-			
+
 			linkID := fmt.Sprintf("link-%03d", linkIndex)
 			link := topology.Link{
 				ID:         linkID,
@@ -226,8 +226,8 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				Weight:     1.0,
 				Status:     "up",
 				Metadata: map[string]string{
-					"link_type": "core-distribution",
-					"speed":     "100G",
+					"link_type":  "core-distribution",
+					"speed":      "100G",
 					"redundancy": "secondary",
 				},
 				LastSeen:  now,
@@ -243,19 +243,19 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 	// 各Accessは2つのDistributionに冗長接続、Distributionは最大24ポートをアクセス用に使用
 	maxDistAccessPorts := 24
 	distsPerAccess := 2
-	
+
 	for i, accessDevice := range accessDevices {
 		connectionsCount := 0
-		
+
 		// 各AccessはプライマリとセカンダリのDistributionに接続
 		primaryDistIndex := i % len(distDevices)
 		secondaryDistIndex := (i + 1) % len(distDevices)
-		
+
 		// プライマリDistribution接続
 		if connectionsCount < distsPerAccess && primaryDistIndex < len(distDevices) {
 			distDevice := distDevices[primaryDistIndex]
 			distPortNum := (i % maxDistAccessPorts) + 1
-			
+
 			linkID := fmt.Sprintf("link-%03d", linkIndex)
 			link := topology.Link{
 				ID:         linkID,
@@ -266,8 +266,8 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				Weight:     2.0,
 				Status:     "up",
 				Metadata: map[string]string{
-					"link_type": "distribution-access",
-					"speed":     "10G",
+					"link_type":  "distribution-access",
+					"speed":      "10G",
 					"redundancy": "primary",
 				},
 				LastSeen:  now,
@@ -278,12 +278,12 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 			linkIndex++
 			connectionsCount++
 		}
-		
+
 		// セカンダリDistribution接続（冗長化）
 		if connectionsCount < distsPerAccess && secondaryDistIndex < len(distDevices) && secondaryDistIndex != primaryDistIndex {
 			distDevice := distDevices[secondaryDistIndex]
 			distPortNum := (i % maxDistAccessPorts) + 1
-			
+
 			linkID := fmt.Sprintf("link-%03d", linkIndex)
 			link := topology.Link{
 				ID:         linkID,
@@ -294,8 +294,8 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				Weight:     2.0,
 				Status:     "up",
 				Metadata: map[string]string{
-					"link_type": "distribution-access",
-					"speed":     "10G",
+					"link_type":  "distribution-access",
+					"speed":      "10G",
 					"redundancy": "secondary",
 				},
 				LastSeen:  now,
@@ -310,7 +310,7 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 	// Access ↔ Server (現実的な接続パターン)
 	// 各Accessスイッチは最大24台のサーバーに接続
 	maxAccessServerPorts := 24
-	
+
 	for i, accessDevice := range accessDevices {
 		startIdx := i * maxAccessServerPorts
 		endIdx := startIdx + maxAccessServerPorts
@@ -321,7 +321,7 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 		for j := startIdx; j < endIdx && j < len(serverDevices); j++ {
 			serverDevice := serverDevices[j]
 			accessPortNum := (j - startIdx) + 1
-			
+
 			linkID := fmt.Sprintf("link-%03d", linkIndex)
 			link := topology.Link{
 				ID:         linkID,

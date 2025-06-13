@@ -24,7 +24,7 @@ type Repository interface {
 
 	// 一覧取得（ページング対応）
 	GetDevices(ctx context.Context, opts PaginationOptions) ([]Device, *PaginationResult, error)
-	
+
 	// フィルタリング
 	FindDevicesByType(ctx context.Context, deviceType string) ([]Device, error)
 	FindDevicesByHardware(ctx context.Context, hardware string) ([]Device, error)

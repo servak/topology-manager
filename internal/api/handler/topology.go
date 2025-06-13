@@ -119,6 +119,23 @@ func (h *TopologyHandler) Register(api huma.API) {
 		Summary:     "Bulk add links",
 		Tags:        []string{"links"},
 	}, h.BulkAddLinks)
+
+	// トポロジー検索API
+	huma.Register(api, huma.Operation{
+		OperationID: "find-reachable-devices",
+		Method:      http.MethodGet,
+		Path:        "/api/devices/{deviceId}/reachable",
+		Summary:     "Find reachable devices using BFS/DFS",
+		Tags:        []string{"topology-search"},
+	}, h.FindReachableDevices)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "find-shortest-path",
+		Method:      http.MethodGet,
+		Path:        "/api/path/{fromId}/{toId}",
+		Summary:     "Find shortest path between two devices",
+		Tags:        []string{"topology-search"},
+	}, h.FindShortestPath)
 }
 
 // デバイス関連ハンドラー
@@ -430,5 +447,85 @@ func (h *TopologyHandler) BulkAddLinks(ctx context.Context, input *struct {
 		Body []topology.Link
 	}{
 		Body: links,
+	}, nil
+}
+
+// トポロジー検索ハンドラー
+func (h *TopologyHandler) FindReachableDevices(ctx context.Context, input *struct {
+	DeviceID   string `path:"deviceId"`
+	Algorithm  string `query:"algorithm" enum:"bfs,dfs" default:"bfs"`
+	MaxHops    int    `query:"max_hops" default:"5"`
+}) (*struct {
+	Body struct {
+		Devices   []topology.Device `json:"devices"`
+		Algorithm string            `json:"algorithm"`
+		MaxHops   int               `json:"max_hops"`
+		Count     int               `json:"count"`
+	}
+}, error) {
+	var algorithm topology.SearchAlgorithm
+	switch input.Algorithm {
+	case "dfs":
+		algorithm = topology.AlgorithmDFS
+	default:
+		algorithm = topology.AlgorithmBFS
+	}
+
+	devices, err := h.topologyService.FindReachableDevices(ctx, input.DeviceID, topology.ReachabilityOptions{
+		MaxHops:   input.MaxHops,
+		Algorithm: algorithm,
+	})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Failed to find reachable devices", err)
+	}
+
+	return &struct {
+		Body struct {
+			Devices   []topology.Device `json:"devices"`
+			Algorithm string            `json:"algorithm"`
+			MaxHops   int               `json:"max_hops"`
+			Count     int               `json:"count"`
+		}
+	}{
+		Body: struct {
+			Devices   []topology.Device `json:"devices"`
+			Algorithm string            `json:"algorithm"`
+			MaxHops   int               `json:"max_hops"`
+			Count     int               `json:"count"`
+		}{
+			Devices:   devices,
+			Algorithm: input.Algorithm,
+			MaxHops:   input.MaxHops,
+			Count:     len(devices),
+		},
+	}, nil
+}
+
+func (h *TopologyHandler) FindShortestPath(ctx context.Context, input *struct {
+	FromID    string `path:"fromId"`
+	ToID      string `path:"toId"`
+	Algorithm string `query:"algorithm" enum:"dijkstra,k_shortest" default:"dijkstra"`
+}) (*struct {
+	Body topology.Path
+}, error) {
+	var algorithm topology.PathAlgorithm
+	switch input.Algorithm {
+	case "k_shortest":
+		algorithm = topology.PathAlgorithmKShortest
+	default:
+		algorithm = topology.PathAlgorithmDijkstra
+	}
+
+	path, err := h.topologyService.FindShortestPath(ctx, input.FromID, input.ToID, topology.PathOptions{
+		Algorithm: algorithm,
+	})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Failed to find shortest path", err)
+	}
+
+	return &struct {
+		Body topology.Path
+	}{
+		Body: *path,
 	}, nil
 }

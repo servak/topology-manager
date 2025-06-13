@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/spf13/cobra"
 	_ "github.com/lib/pq"
+	"github.com/spf13/cobra"
 )
 
 var migrateCmd = &cobra.Command{
@@ -24,7 +24,7 @@ var migrateCmd = &cobra.Command{
 
 func runMigrate(cmd *cobra.Command, args []string) {
 	command := args[0]
-	
+
 	// PostgreSQL DSN を環境変数から取得
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -99,7 +99,7 @@ func migrateUp(db *sql.DB) error {
 		}
 
 		log.Printf("Applying migration %s...", filename)
-		
+
 		filePath := filepath.Join(migrationDir, filename)
 		content, err := ioutil.ReadFile(filePath)
 		if err != nil {
@@ -125,7 +125,7 @@ func migrateUp(db *sql.DB) error {
 func migrateDown(db *sql.DB) error {
 	// 簡単なダウンマイグレーション（全テーブル削除）
 	log.Println("Dropping all tables...")
-	
+
 	dropQueries := []string{
 		"DROP TABLE IF EXISTS links",
 		"DROP TABLE IF EXISTS devices",

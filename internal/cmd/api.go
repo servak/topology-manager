@@ -9,9 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/servak/topology-manager/internal/api"
-	"github.com/servak/topology-manager/internal/repository/postgres"
+	"github.com/servak/topology-manager/internal/config"
+	"github.com/servak/topology-manager/internal/repository"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -31,18 +32,13 @@ func init() {
 
 func runAPI(cmd *cobra.Command, args []string) {
 	// PostgreSQL DSN を環境変数から取得
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://topology:topology@localhost/topology_manager?sslmode=disable"
-		if verbose {
-			log.Printf("Using default database URL (set DATABASE_URL to override)")
-		}
-	}
-
-	// PostgreSQLリポジトリの初期化
-	repo, err := postgres.NewPostgresRepository(dsn)
+	config, err := config.LoadConfig(configPath)
 	if err != nil {
-		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+		log.Fatalf("Failed to load config: %v", err)
+	}
+	repo, err := repository.NewDatabase(&config.Database)
+	if err != nil {
+		log.Fatalf("Failed to create database: %v", err)
 	}
 	defer repo.Close()
 

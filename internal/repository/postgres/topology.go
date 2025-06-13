@@ -16,6 +16,44 @@ type PostgresRepository struct {
 	db *sqlx.DB
 }
 
+type PostgresConfig struct {
+	Host     string `yaml:"host"`
+	User     string `yaml:"user"`
+	Port     int    `yaml:"port"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"dbname"`
+	SSLMode  string `yaml:"sslmode"`
+}
+
+// DSN returns the PostgreSQL connection string
+func (c *PostgresConfig) DSN() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		c.User, c.Password, c.Host, c.Port, c.DBName, c.SSLMode)
+}
+
+// Validate checks if the configuration is valid
+func (c *PostgresConfig) Validate() error {
+	if c.Host == "" {
+		return fmt.Errorf("postgres host is required")
+	}
+	if c.User == "" {
+		return fmt.Errorf("postgres user is required")
+	}
+	if c.Password == "" {
+		return fmt.Errorf("postgres password is required")
+	}
+	if c.DBName == "" {
+		return fmt.Errorf("postgres database name is required")
+	}
+	if c.Port <= 0 || c.Port > 65535 {
+		return fmt.Errorf("postgres port must be between 1 and 65535, got %d", c.Port)
+	}
+	if c.SSLMode == "" {
+		c.SSLMode = "disable" // Default value
+	}
+	return nil
+}
+
 func (r *PostgresRepository) DB() *sqlx.DB {
 	return r.db
 }
@@ -188,10 +226,10 @@ func (r *PostgresRepository) RemoveLink(ctx context.Context, linkID string) erro
 
 func (r *PostgresRepository) GetDevice(ctx context.Context, deviceID string) (*topology.Device, error) {
 	query := `SELECT id, name, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE id = $1`
-	
+
 	var device topology.Device
 	var metadataJSON []byte
-	
+
 	err := r.db.QueryRowContext(ctx, query, deviceID).Scan(
 		&device.ID, &device.Name, &device.Type, &device.Hardware, &device.Instance,
 		&device.IPAddress, &device.Location, &device.Status, &device.Layer,
@@ -213,10 +251,10 @@ func (r *PostgresRepository) GetDevice(ctx context.Context, deviceID string) (*t
 
 func (r *PostgresRepository) GetLink(ctx context.Context, linkID string) (*topology.Link, error) {
 	query := `SELECT id, source_id, target_id, source_port, target_port, weight, status, metadata, last_seen, created_at, updated_at FROM links WHERE id = $1`
-	
+
 	var link topology.Link
 	var metadataJSON []byte
-	
+
 	err := r.db.QueryRowContext(ctx, query, linkID).Scan(
 		&link.ID, &link.SourceID, &link.TargetID, &link.SourcePort, &link.TargetPort,
 		&link.Weight, &link.Status, &metadataJSON, &link.LastSeen, &link.CreatedAt, &link.UpdatedAt)
@@ -237,7 +275,7 @@ func (r *PostgresRepository) GetLink(ctx context.Context, linkID string) (*topol
 
 func (r *PostgresRepository) FindDevicesByType(ctx context.Context, deviceType string) ([]topology.Device, error) {
 	query := `SELECT id, name, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE type = $1`
-	
+
 	rows, err := r.db.QueryContext(ctx, query, deviceType)
 	if err != nil {
 		return nil, err
@@ -248,12 +286,12 @@ func (r *PostgresRepository) FindDevicesByType(ctx context.Context, deviceType s
 	for rows.Next() {
 		var device topology.Device
 		var metadataJSON []byte
-		
+
 		err := rows.Scan(
 			&device.ID, &device.Name, &device.Type, &device.Hardware, &device.Instance,
 			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
-		
+
 		if err != nil {
 			return nil, err
 		}
@@ -270,7 +308,7 @@ func (r *PostgresRepository) FindDevicesByType(ctx context.Context, deviceType s
 
 func (r *PostgresRepository) FindDevicesByHardware(ctx context.Context, hardware string) ([]topology.Device, error) {
 	query := `SELECT id, name, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE hardware ILIKE $1`
-	
+
 	rows, err := r.db.QueryContext(ctx, query, "%"+hardware+"%")
 	if err != nil {
 		return nil, err
@@ -281,12 +319,12 @@ func (r *PostgresRepository) FindDevicesByHardware(ctx context.Context, hardware
 	for rows.Next() {
 		var device topology.Device
 		var metadataJSON []byte
-		
+
 		err := rows.Scan(
 			&device.ID, &device.Name, &device.Type, &device.Hardware, &device.Instance,
 			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
-		
+
 		if err != nil {
 			return nil, err
 		}
@@ -303,7 +341,7 @@ func (r *PostgresRepository) FindDevicesByHardware(ctx context.Context, hardware
 
 func (r *PostgresRepository) FindDevicesByInstance(ctx context.Context, instance string) ([]topology.Device, error) {
 	query := `SELECT id, name, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at FROM devices WHERE instance = $1`
-	
+
 	rows, err := r.db.QueryContext(ctx, query, instance)
 	if err != nil {
 		return nil, err
@@ -314,12 +352,12 @@ func (r *PostgresRepository) FindDevicesByInstance(ctx context.Context, instance
 	for rows.Next() {
 		var device topology.Device
 		var metadataJSON []byte
-		
+
 		err := rows.Scan(
 			&device.ID, &device.Name, &device.Type, &device.Hardware, &device.Instance,
 			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
-		
+
 		if err != nil {
 			return nil, err
 		}
@@ -336,7 +374,7 @@ func (r *PostgresRepository) FindDevicesByInstance(ctx context.Context, instance
 
 func (r *PostgresRepository) GetDeviceLinks(ctx context.Context, deviceID string) ([]topology.Link, error) {
 	query := `SELECT id, source_id, target_id, source_port, target_port, weight, status, metadata, last_seen, created_at, updated_at FROM links WHERE source_id = $1 OR target_id = $1`
-	
+
 	rows, err := r.db.QueryContext(ctx, query, deviceID)
 	if err != nil {
 		return nil, err
@@ -347,11 +385,11 @@ func (r *PostgresRepository) GetDeviceLinks(ctx context.Context, deviceID string
 	for rows.Next() {
 		var link topology.Link
 		var metadataJSON []byte
-		
+
 		err := rows.Scan(
 			&link.ID, &link.SourceID, &link.TargetID, &link.SourcePort, &link.TargetPort,
 			&link.Weight, &link.Status, &metadataJSON, &link.LastSeen, &link.CreatedAt, &link.UpdatedAt)
-		
+
 		if err != nil {
 			return nil, err
 		}
@@ -371,7 +409,7 @@ func (r *PostgresRepository) FindLinksByPort(ctx context.Context, deviceID, port
 		SELECT id, source_id, target_id, source_port, target_port, weight, status, metadata, last_seen, created_at, updated_at 
 		FROM links 
 		WHERE (source_id = $1 AND source_port = $2) OR (target_id = $1 AND target_port = $2)`
-	
+
 	rows, err := r.db.QueryContext(ctx, query, deviceID, port)
 	if err != nil {
 		return nil, err
@@ -382,11 +420,11 @@ func (r *PostgresRepository) FindLinksByPort(ctx context.Context, deviceID, port
 	for rows.Next() {
 		var link topology.Link
 		var metadataJSON []byte
-		
+
 		err := rows.Scan(
 			&link.ID, &link.SourceID, &link.TargetID, &link.SourcePort, &link.TargetPort,
 			&link.Weight, &link.Status, &metadataJSON, &link.LastSeen, &link.CreatedAt, &link.UpdatedAt)
-		
+
 		if err != nil {
 			return nil, err
 		}
@@ -412,12 +450,12 @@ func (r *PostgresRepository) BulkAddDevices(ctx context.Context, devices []topol
 		if end > len(devices) {
 			end = len(devices)
 		}
-		
+
 		if err := r.bulkAddDevicesBatch(ctx, devices[i:end]); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -431,17 +469,17 @@ func (r *PostgresRepository) bulkAddDevicesBatch(ctx context.Context, devices []
 	// COPY形式でバルクインサート
 	valueStrings := make([]string, 0, len(devices))
 	valueArgs := make([]interface{}, 0, len(devices)*11)
-	
+
 	for i, device := range devices {
 		metadataJSON, err := json.Marshal(device.Metadata)
 		if err != nil {
 			return fmt.Errorf("failed to marshal metadata for device %s: %w", device.ID, err)
 		}
-		
-		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)", 
+
+		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
 			i*11+1, i*11+2, i*11+3, i*11+4, i*11+5, i*11+6, i*11+7, i*11+8, i*11+9, i*11+10, i*11+11))
-		
-		valueArgs = append(valueArgs, 
+
+		valueArgs = append(valueArgs,
 			device.ID, device.Name, device.Type, device.Hardware, device.Instance,
 			device.IPAddress, device.Location, device.Status, device.Layer,
 			metadataJSON, device.LastSeen)
@@ -482,12 +520,12 @@ func (r *PostgresRepository) BulkAddLinks(ctx context.Context, links []topology.
 		if end > len(links) {
 			end = len(links)
 		}
-		
+
 		if err := r.bulkAddLinksBatch(ctx, links[i:end]); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -501,17 +539,17 @@ func (r *PostgresRepository) bulkAddLinksBatch(ctx context.Context, links []topo
 	// COPY形式でバルクインサート
 	valueStrings := make([]string, 0, len(links))
 	valueArgs := make([]interface{}, 0, len(links)*9)
-	
+
 	for i, link := range links {
 		metadataJSON, err := json.Marshal(link.Metadata)
 		if err != nil {
 			return fmt.Errorf("failed to marshal metadata for link %s: %w", link.ID, err)
 		}
-		
-		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)", 
+
+		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
 			i*9+1, i*9+2, i*9+3, i*9+4, i*9+5, i*9+6, i*9+7, i*9+8, i*9+9))
-		
-		valueArgs = append(valueArgs, 
+
+		valueArgs = append(valueArgs,
 			link.ID, link.SourceID, link.TargetID, link.SourcePort, link.TargetPort,
 			link.Weight, link.Status, metadataJSON, link.LastSeen)
 	}
@@ -537,8 +575,123 @@ func (r *PostgresRepository) bulkAddLinksBatch(ctx context.Context, links []topo
 
 // 複雑な検索メソッドのスタブ実装（後で拡張）
 func (r *PostgresRepository) FindReachableDevices(ctx context.Context, deviceID string, opts topology.ReachabilityOptions) ([]topology.Device, error) {
-	// BFS/DFS実装は後で追加
-	return nil, fmt.Errorf("not implemented yet")
+	if opts.MaxHops <= 0 {
+		opts.MaxHops = 5 // デフォルト最大5ホップ
+	}
+	if opts.Algorithm == "" {
+		opts.Algorithm = topology.AlgorithmBFS // デフォルトはBFS
+	}
+
+	var query string
+	if opts.Algorithm == topology.AlgorithmBFS {
+		// BFS: 幅優先探索（レベル順に探索）
+		query = `
+		WITH RECURSIVE reachability AS (
+			-- 起点デバイス
+			SELECT 
+				d.id, d.name, d.type, d.hardware, d.instance,
+				d.ip_address, d.location, d.status, d.layer,
+				d.metadata, d.last_seen, d.created_at, d.updated_at,
+				0 as hop_count,
+				d.name::text as path
+			FROM devices d 
+			WHERE d.name = $1
+			
+			UNION ALL
+			
+			-- 隣接デバイス（BFS: レベル順）
+			SELECT 
+				d.id, d.name, d.type, d.hardware, d.instance,
+				d.ip_address, d.location, d.status, d.layer,
+				d.metadata, d.last_seen, d.created_at, d.updated_at,
+				r.hop_count + 1,
+				r.path || ',' || d.name::text
+			FROM devices d
+			INNER JOIN links l ON (d.name = l.source_id OR d.name = l.target_id)
+			INNER JOIN reachability r ON (
+				(l.source_id = r.name AND d.name = l.target_id) OR
+				(l.target_id = r.name AND d.name = l.source_id)
+			)
+			WHERE r.hop_count < $2
+			  AND position(',' || d.name::text || ',' in ',' || r.path || ',') = 0
+		)
+		SELECT DISTINCT 
+			id, name, type, hardware, instance, ip_address, location,
+			status, layer, metadata, last_seen, created_at, updated_at, hop_count
+		FROM reachability
+		WHERE hop_count > 0  -- 起点デバイス自身は除外
+		ORDER BY hop_count, name`
+	} else {
+		// DFS: 深度優先探索（深い経路を優先）
+		query = `
+		WITH RECURSIVE reachability AS (
+			-- 起点デバイス
+			SELECT 
+				d.id, d.name, d.type, d.hardware, d.instance,
+				d.ip_address, d.location, d.status, d.layer,
+				d.metadata, d.last_seen, d.created_at, d.updated_at,
+				0 as hop_count,
+				d.name::text as path,
+				1 as search_order
+			FROM devices d 
+			WHERE d.name = $1
+			
+			UNION ALL
+			
+			-- 隣接デバイス（DFS: 深度優先）
+			SELECT 
+				d.id, d.name, d.type, d.hardware, d.instance,
+				d.ip_address, d.location, d.status, d.layer,
+				d.metadata, d.last_seen, d.created_at, d.updated_at,
+				r.hop_count + 1,
+				r.path || ',' || d.name::text,
+				r.search_order + 1
+			FROM devices d
+			INNER JOIN links l ON (d.name = l.source_id OR d.name = l.target_id)
+			INNER JOIN reachability r ON (
+				(l.source_id = r.name AND d.name = l.target_id) OR
+				(l.target_id = r.name AND d.name = l.source_id)
+			)
+			WHERE r.hop_count < $2
+			  AND position(',' || d.name::text || ',' in ',' || r.path || ',') = 0
+		)
+		SELECT DISTINCT 
+			id, name, type, hardware, instance, ip_address, location,
+			status, layer, metadata, last_seen, created_at, updated_at, search_order
+		FROM reachability
+		WHERE hop_count > 0  -- 起点デバイス自身は除外
+		ORDER BY search_order DESC, name` // DFS順序
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, deviceID, opts.MaxHops)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query reachable devices: %w", err)
+	}
+	defer rows.Close()
+
+	var devices []topology.Device
+	for rows.Next() {
+		var device topology.Device
+		var metadataJSON []byte
+		var orderField interface{} // hop_count or search_order
+
+		err := rows.Scan(
+			&device.ID, &device.Name, &device.Type, &device.Hardware, &device.Instance,
+			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
+			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt, &orderField)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan device: %w", err)
+		}
+
+		if err := json.Unmarshal(metadataJSON, &device.Metadata); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+		}
+
+		devices = append(devices, device)
+	}
+
+	return devices, rows.Err()
 }
 
 func (r *PostgresRepository) ExtractSubTopology(ctx context.Context, deviceID string, opts topology.SubTopologyOptions) ([]topology.Device, []topology.Link, error) {
@@ -548,7 +701,7 @@ func (r *PostgresRepository) ExtractSubTopology(ctx context.Context, deviceID st
 
 	// より効率的な非再帰アプローチ - レベル毎に実行
 	// 現実的なSeedデータなので制限を撤廃
-	
+
 	// CTEを使った効率的な階層検索クエリ（改良版）
 	query := `
 	WITH RECURSIVE topology_traversal AS (
@@ -594,16 +747,16 @@ func (r *PostgresRepository) ExtractSubTopology(ctx context.Context, deviceID st
 
 	var devices []topology.Device
 	deviceNames := make([]string, 0)
-	
+
 	for rows.Next() {
 		var device topology.Device
 		var metadataJSON []byte
-		
+
 		err := rows.Scan(
 			&device.ID, &device.Name, &device.Type, &device.Hardware, &device.Instance,
 			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
 			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
-		
+
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to scan device: %w", err)
 		}
@@ -629,7 +782,7 @@ func (r *PostgresRepository) ExtractSubTopology(ctx context.Context, deviceID st
 	placeholders1 := make([]string, len(deviceNames))
 	placeholders2 := make([]string, len(deviceNames))
 	linkArgs := make([]interface{}, len(deviceNames)*2)
-	
+
 	for i, name := range deviceNames {
 		placeholders1[i] = fmt.Sprintf("$%d", i+1)
 		placeholders2[i] = fmt.Sprintf("$%d", i+1+len(deviceNames))
@@ -654,11 +807,11 @@ func (r *PostgresRepository) ExtractSubTopology(ctx context.Context, deviceID st
 	for linkRows.Next() {
 		var link topology.Link
 		var metadataJSON []byte
-		
+
 		err := linkRows.Scan(
 			&link.ID, &link.SourceID, &link.TargetID, &link.SourcePort, &link.TargetPort,
 			&link.Weight, &link.Status, &metadataJSON, &link.LastSeen, &link.CreatedAt, &link.UpdatedAt)
-		
+
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to scan link: %w", err)
 		}
@@ -674,8 +827,109 @@ func (r *PostgresRepository) ExtractSubTopology(ctx context.Context, deviceID st
 }
 
 func (r *PostgresRepository) FindShortestPath(ctx context.Context, fromID, toID string, opts topology.PathOptions) (*topology.Path, error) {
-	// Dijkstra実装は後で追加
-	return nil, fmt.Errorf("not implemented yet")
+	if opts.Algorithm == "" {
+		opts.Algorithm = topology.PathAlgorithmDijkstra
+	}
+
+	// Dijkstraアルゴリズム（重み付き最短パス）
+	query := `
+	WITH RECURSIVE dijkstra AS (
+		-- 起点デバイス
+		SELECT 
+			d.id, d.name, d.type, d.hardware, d.instance,
+			d.ip_address, d.location, d.status, d.layer,
+			d.metadata, d.last_seen, d.created_at, d.updated_at,
+			0.0 as total_cost,
+			0 as hop_count,
+			d.name::text as path_devices,
+			''::text as path_links
+		FROM devices d 
+		WHERE d.name = $1
+		
+		UNION ALL
+		
+		-- 隣接デバイス（Dijkstra）
+		SELECT 
+			d.id, d.name, d.type, d.hardware, d.instance,
+			d.ip_address, d.location, d.status, d.layer,
+			d.metadata, d.last_seen, d.created_at, d.updated_at,
+			dij.total_cost + l.weight as total_cost,
+			dij.hop_count + 1,
+			dij.path_devices || ',' || d.name::text,
+			CASE 
+				WHEN dij.path_links = '' THEN l.id
+				ELSE dij.path_links || ',' || l.id
+			END
+		FROM devices d
+		INNER JOIN links l ON (d.name = l.source_id OR d.name = l.target_id)
+		INNER JOIN dijkstra dij ON (
+			(l.source_id = dij.name AND d.name = l.target_id) OR
+			(l.target_id = dij.name AND d.name = l.source_id)
+		)
+		WHERE position(',' || d.name::text || ',' in ',' || dij.path_devices || ',') = 0
+		  AND dij.hop_count < 6  -- 最大6ホップ制限（現実的な範囲）
+	)
+	SELECT 
+		path_devices,
+		path_links,
+		total_cost,
+		hop_count
+	FROM dijkstra
+	WHERE name = $2
+	ORDER BY total_cost ASC, hop_count ASC
+	LIMIT 1`
+
+	var pathDevices, pathLinks string
+	var totalCost float64
+	var hopCount int
+
+	err := r.db.QueryRowContext(ctx, query, fromID, toID).Scan(
+		&pathDevices, &pathLinks, &totalCost, &hopCount)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("no path found from %s to %s", fromID, toID)
+		}
+		return nil, fmt.Errorf("failed to find shortest path: %w", err)
+	}
+
+	// パスの詳細情報を取得
+	deviceNames := strings.Split(pathDevices, ",")
+	linkIDs := []string{}
+	if pathLinks != "" {
+		linkIDs = strings.Split(pathLinks, ",")
+	}
+
+	// デバイス情報を取得
+	devices := make([]topology.Device, 0, len(deviceNames))
+	for _, deviceName := range deviceNames {
+		device, err := r.GetDevice(ctx, deviceName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get device %s: %w", deviceName, err)
+		}
+		if device != nil {
+			devices = append(devices, *device)
+		}
+	}
+
+	// リンク情報を取得
+	links := make([]topology.Link, 0, len(linkIDs))
+	for _, linkID := range linkIDs {
+		link, err := r.GetLink(ctx, linkID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get link %s: %w", linkID, err)
+		}
+		if link != nil {
+			links = append(links, *link)
+		}
+	}
+
+	return &topology.Path{
+		Devices:   devices,
+		Links:     links,
+		TotalCost: totalCost,
+		HopCount:  hopCount,
+	}, nil
 }
 
 func (r *PostgresRepository) Close() error {

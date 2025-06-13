@@ -255,3 +255,12 @@ type NeighborInfo struct {
 	RemotePort string          `json:"remote_port"`
 	Status     string          `json:"status"`
 }
+
+// トポロジー検索メソッド
+func (s *TopologyService) FindReachableDevices(ctx context.Context, deviceID string, opts topology.ReachabilityOptions) ([]topology.Device, error) {
+	return s.repo.FindReachableDevices(ctx, deviceID, opts)
+}
+
+func (s *TopologyService) FindShortestPath(ctx context.Context, fromID, toID string, opts topology.PathOptions) (*topology.Path, error) {
+	return s.repo.FindShortestPath(ctx, fromID, toID, opts)
+}
