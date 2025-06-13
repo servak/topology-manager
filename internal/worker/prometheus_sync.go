@@ -89,31 +89,23 @@ func NewPrometheusSync(
 func (ps *PrometheusSync) Start() error {
 	ps.logger.Println("Starting Prometheus synchronization worker...")
 
-	// Add LLDP synchronization task
-	if ps.config.EnableLLDPSync {
-		lldpTask := NewTaskBuilder("lldp_sync", "LLDP Topology Sync").
-			Description("Synchronizes network topology from LLDP data in Prometheus").
-			Interval(ps.config.LLDPSyncInterval).
-			Timeout(ps.config.SyncTimeout).
-			Function(ps.syncLLDPTopology).
-			Build()
-
-		if err := ps.scheduler.AddTask(lldpTask); err != nil {
-			return fmt.Errorf("failed to add LLDP sync task: %w", err)
+	// Add combined topology synchronization task (devices + LLDP)
+	if ps.config.EnableLLDPSync || ps.config.EnableDeviceSync {
+		// Use the shorter interval for combined sync
+		syncInterval := ps.config.LLDPSyncInterval
+		if ps.config.EnableDeviceSync && ps.config.DeviceSyncInterval < syncInterval {
+			syncInterval = ps.config.DeviceSyncInterval
 		}
-	}
 
-	// Add device synchronization task
-	if ps.config.EnableDeviceSync {
-		deviceTask := NewTaskBuilder("device_sync", "Device Info Sync").
-			Description("Synchronizes device information from Prometheus").
-			Interval(ps.config.DeviceSyncInterval).
+		topologyTask := NewTaskBuilder("topology_sync", "Complete Topology Sync").
+			Description("Synchronizes devices and LLDP topology from Prometheus in proper order").
+			Interval(syncInterval).
 			Timeout(ps.config.SyncTimeout).
-			Function(ps.syncDeviceInfo).
+			Function(ps.syncCompleteTopology).
 			Build()
 
-		if err := ps.scheduler.AddTask(deviceTask); err != nil {
-			return fmt.Errorf("failed to add device sync task: %w", err)
+		if err := ps.scheduler.AddTask(topologyTask); err != nil {
+			return fmt.Errorf("failed to add topology sync task: %w", err)
 		}
 	}
 
@@ -154,15 +146,9 @@ func (ps *PrometheusSync) GetStatus() []TaskStatus {
 func (ps *PrometheusSync) SyncNow() error {
 	var errors []error
 
-	if ps.config.EnableLLDPSync {
-		if err := ps.scheduler.RunTaskNow("lldp_sync"); err != nil {
-			errors = append(errors, fmt.Errorf("LLDP sync: %w", err))
-		}
-	}
-
-	if ps.config.EnableDeviceSync {
-		if err := ps.scheduler.RunTaskNow("device_sync"); err != nil {
-			errors = append(errors, fmt.Errorf("device sync: %w", err))
+	if ps.config.EnableLLDPSync || ps.config.EnableDeviceSync {
+		if err := ps.scheduler.RunTaskNow("topology_sync"); err != nil {
+			errors = append(errors, fmt.Errorf("topology sync: %w", err))
 		}
 	}
 
@@ -174,6 +160,42 @@ func (ps *PrometheusSync) SyncNow() error {
 }
 
 // Private synchronization methods
+
+func (ps *PrometheusSync) syncCompleteTopology(ctx context.Context) error {
+	ps.logger.Println("Starting complete topology synchronization...")
+
+	var allErrors []error
+
+	// Step 1: Synchronize device information first
+	if ps.config.EnableDeviceSync {
+		ps.logger.Println("Phase 1: Synchronizing device information...")
+		if err := ps.syncDeviceInfo(ctx); err != nil {
+			allErrors = append(allErrors, fmt.Errorf("device sync failed: %w", err))
+			ps.logger.Printf("Device sync failed, but continuing with LLDP sync: %v", err)
+		} else {
+			ps.logger.Println("Phase 1: Device synchronization completed successfully")
+		}
+	}
+
+	// Step 2: Synchronize LLDP topology (with placeholder device creation)
+	if ps.config.EnableLLDPSync {
+		ps.logger.Println("Phase 2: Synchronizing LLDP topology...")
+		if err := ps.syncLLDPTopology(ctx); err != nil {
+			allErrors = append(allErrors, fmt.Errorf("LLDP sync failed: %w", err))
+			ps.logger.Printf("LLDP sync failed: %v", err)
+		} else {
+			ps.logger.Println("Phase 2: LLDP synchronization completed successfully")
+		}
+	}
+
+	if len(allErrors) > 0 {
+		ps.logger.Printf("Complete topology synchronization finished with %d errors", len(allErrors))
+		return fmt.Errorf("topology sync errors: %v", allErrors)
+	}
+
+	ps.logger.Println("Complete topology synchronization finished successfully")
+	return nil
+}
 
 func (ps *PrometheusSync) syncLLDPTopology(ctx context.Context) error {
 	ps.logger.Println("Starting LLDP topology synchronization...")
@@ -192,6 +214,11 @@ func (ps *PrometheusSync) syncLLDPTopology(ctx context.Context) error {
 	}
 
 	ps.logger.Printf("Successfully extracted %d links using metrics mapping", len(links))
+
+	// Ensure all devices referenced by links exist before inserting links
+	if err := ps.ensureReferencedDevicesExist(ctx, links); err != nil {
+		return fmt.Errorf("failed to ensure referenced devices exist: %w", err)
+	}
 
 	// Batch process links
 	if err := ps.batchAddLinks(ctx, links); err != nil {
@@ -279,6 +306,76 @@ func (ps *PrometheusSync) batchAddLinks(ctx context.Context, links []topology.Li
 		if err := ps.repository.BulkAddLinks(ctx, batch); err != nil {
 			return fmt.Errorf("failed to add link batch %d-%d: %w", i, end-1, err)
 		}
+	}
+
+	return nil
+}
+
+// ensureReferencedDevicesExist creates placeholder devices for any device IDs referenced in links but not yet in the database
+func (ps *PrometheusSync) ensureReferencedDevicesExist(ctx context.Context, links []topology.Link) error {
+	// Collect all unique device IDs referenced in links
+	deviceIDSet := make(map[string]bool)
+	for _, link := range links {
+		if link.SourceID != "" {
+			deviceIDSet[link.SourceID] = true
+		}
+		if link.TargetID != "" {
+			deviceIDSet[link.TargetID] = true
+		}
+	}
+
+	// Convert to slice
+	var deviceIDs []string
+	for deviceID := range deviceIDSet {
+		deviceIDs = append(deviceIDs, deviceID)
+	}
+
+	if len(deviceIDs) == 0 {
+		return nil
+	}
+
+	ps.logger.Printf("Checking existence of %d devices referenced in links", len(deviceIDs))
+
+	// Check which devices already exist
+	existingDevices := make(map[string]bool)
+	for _, deviceID := range deviceIDs {
+		if device, err := ps.repository.GetDevice(ctx, deviceID); err == nil && device != nil {
+			existingDevices[deviceID] = true
+		}
+	}
+
+	// Create placeholder devices for missing ones
+	var missingDevices []topology.Device
+	now := time.Now()
+	
+	for _, deviceID := range deviceIDs {
+		if !existingDevices[deviceID] {
+			device := topology.Device{
+				ID:        deviceID,
+				Type:      "unknown",
+				Hardware:  "unknown", 
+				Instance:  "unknown",
+				Location:  "unknown",
+				Status:    "unknown",
+				Layer:     99,
+				Metadata:  make(map[string]string),
+				LastSeen:  now,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			missingDevices = append(missingDevices, device)
+		}
+	}
+
+	if len(missingDevices) > 0 {
+		ps.logger.Printf("Creating %d placeholder devices for LLDP-discovered devices not in Prometheus monitoring", len(missingDevices))
+		for _, device := range missingDevices {
+			ps.logger.Printf("  - Creating placeholder for device: %s (likely managed by another team)", device.ID)
+		}
+		if err := ps.batchAddDevices(ctx, missingDevices); err != nil {
+			return fmt.Errorf("failed to create placeholder devices: %w", err)
+		}
+		ps.logger.Printf("Successfully created %d placeholder devices for LLDP-discovered neighbors", len(missingDevices))
 	}
 
 	return nil
