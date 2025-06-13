@@ -249,6 +249,68 @@ func (r *PostgresRepository) GetDevice(ctx context.Context, deviceID string) (*t
 	return &device, nil
 }
 
+// SearchDevices searches for devices by ID, name, or IP address with fuzzy matching
+func (r *PostgresRepository) SearchDevices(ctx context.Context, query string, limit int) ([]topology.Device, error) {
+	if limit <= 0 {
+		limit = 20 // Default limit
+	}
+	if limit > 100 {
+		limit = 100 // Maximum limit
+	}
+
+	sqlQuery := `
+		SELECT id, name, type, hardware, instance, ip_address, location, status, layer, metadata, last_seen, created_at, updated_at 
+		FROM devices 
+		WHERE 
+			id ILIKE $1 OR 
+			name ILIKE $1 OR 
+			ip_address::text ILIKE $1 OR
+			hardware ILIKE $1
+		ORDER BY 
+			CASE 
+				WHEN id = $2 THEN 1
+				WHEN id ILIKE $3 THEN 2
+				WHEN name = $2 THEN 3
+				WHEN name ILIKE $3 THEN 4
+				ELSE 5
+			END,
+			id
+		LIMIT $4`
+
+	searchPattern := "%" + query + "%"
+	exactQuery := query
+	prefixPattern := query + "%"
+
+	rows, err := r.db.QueryContext(ctx, sqlQuery, searchPattern, exactQuery, prefixPattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var devices []topology.Device
+	for rows.Next() {
+		var device topology.Device
+		var metadataJSON []byte
+
+		err := rows.Scan(
+			&device.ID, &device.Name, &device.Type, &device.Hardware, &device.Instance,
+			&device.IPAddress, &device.Location, &device.Status, &device.Layer,
+			&metadataJSON, &device.LastSeen, &device.CreatedAt, &device.UpdatedAt)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if err := json.Unmarshal(metadataJSON, &device.Metadata); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+		}
+
+		devices = append(devices, device)
+	}
+
+	return devices, rows.Err()
+}
+
 func (r *PostgresRepository) GetLink(ctx context.Context, linkID string) (*topology.Link, error) {
 	query := `SELECT id, source_id, target_id, source_port, target_port, weight, status, metadata, last_seen, created_at, updated_at FROM links WHERE id = $1`
 

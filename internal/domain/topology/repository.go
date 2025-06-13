@@ -5,36 +5,24 @@ import (
 )
 
 type Repository interface {
-	// 基本操作
-	AddDevice(ctx context.Context, device Device) error
-	AddLink(ctx context.Context, link Link) error
-	UpdateDevice(ctx context.Context, device Device) error
-	UpdateLink(ctx context.Context, link Link) error
-	RemoveDevice(ctx context.Context, deviceID string) error
-	RemoveLink(ctx context.Context, linkID string) error
-
-	// 単体取得
+	// 単体取得（可視化API使用中）
 	GetDevice(ctx context.Context, deviceID string) (*Device, error)
-	GetLink(ctx context.Context, linkID string) (*Link, error)
 
-	// 検索操作
+	// デバイス検索（フロントエンド検索機能使用中）
+	SearchDevices(ctx context.Context, query string, limit int) ([]Device, error)
+
+	// 更新操作（Worker使用中）
+	UpdateDevice(ctx context.Context, device Device) error
+
+	// トポロジー検索（API使用中）
 	FindReachableDevices(ctx context.Context, deviceID string, opts ReachabilityOptions) ([]Device, error)
-	ExtractSubTopology(ctx context.Context, deviceID string, opts SubTopologyOptions) ([]Device, []Link, error)
 	FindShortestPath(ctx context.Context, fromID, toID string, opts PathOptions) (*Path, error)
+	ExtractSubTopology(ctx context.Context, deviceID string, opts SubTopologyOptions) ([]Device, []Link, error)
 
-	// 一覧取得（ページング対応）
-	GetDevices(ctx context.Context, opts PaginationOptions) ([]Device, *PaginationResult, error)
-
-	// フィルタリング
-	FindDevicesByType(ctx context.Context, deviceType string) ([]Device, error)
-	FindDevicesByHardware(ctx context.Context, hardware string) ([]Device, error)
-	FindDevicesByInstance(ctx context.Context, instance string) ([]Device, error)
-
-	// リンク検索
+	// リンク検索（可視化API使用中）
 	GetDeviceLinks(ctx context.Context, deviceID string) ([]Link, error)
-	FindLinksByPort(ctx context.Context, deviceID, port string) ([]Link, error)
 
-	// バルク操作
+	// バルク操作（seedDataコマンド使用中）
 	BulkAddDevices(ctx context.Context, devices []Device) error
 	BulkAddLinks(ctx context.Context, links []Link) error
 

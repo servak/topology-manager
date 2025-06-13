@@ -15,6 +15,22 @@ function App() {
   const [selectedObject, setSelectedObject] = useState(null)
   const [activeTab, setActiveTab] = useState('topology')
 
+  // URLパラメータからデバイスIDを読み込み
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const deviceParam = urlParams.get('device')
+    const depthParam = urlParams.get('depth')
+    
+    if (deviceParam) {
+      setSelectedDevice(deviceParam)
+      if (depthParam && !isNaN(parseInt(depthParam))) {
+        setDepth(parseInt(depthParam))
+      }
+      // URLパラメータでデバイスが指定されている場合は自動で可視化実行
+      fetchTopology(deviceParam, depthParam ? parseInt(depthParam) : depth)
+    }
+  }, [])
+
   const fetchTopology = async (hostname, explorationDepth = 3) => {
     if (!hostname) return
 

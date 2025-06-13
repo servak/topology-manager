@@ -47,8 +47,11 @@ func NewDatabase(config *DatabaseConfig) (topology.Repository, error) {
 		}
 		return repo, nil
 	case "neo4j":
-		// TODO: Implement Neo4j repository
-		return nil, fmt.Errorf("neo4j repository not implemented yet")
+		repo, err := neo4j.NewNeo4jRepository(config.Neo4j)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create neo4j repository: %w", err)
+		}
+		return repo, nil
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", config.Type)
 	}

@@ -5,7 +5,9 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/servak/topology-manager/internal/prometheus"
 	"github.com/servak/topology-manager/internal/repository"
 	"github.com/servak/topology-manager/internal/repository/postgres"
 	"gopkg.in/yaml.v3"
@@ -13,8 +15,15 @@ import (
 
 // Config represents the main application configuration
 type Config struct {
-	Hierarchy HierarchyConfig           `yaml:"hierarchy"`
-	Database  repository.DatabaseConfig `yaml:"database"`
+	Hierarchy  HierarchyConfig           `yaml:"hierarchy"`
+	Database   repository.DatabaseConfig `yaml:"database"`
+	Prometheus PrometheusConfig          `yaml:"prometheus"`
+}
+
+// PrometheusConfig holds Prometheus configuration
+type PrometheusConfig struct {
+	URL     string        `yaml:"url"`
+	Timeout time.Duration `yaml:"timeout"`
 }
 
 // HierarchyConfig holds device hierarchy configuration
@@ -94,6 +103,15 @@ func (c *Config) setDefaults() {
 			SSLMode: "disable",
 		}
 	}
+
+	// Prometheus defaults
+	if c.Prometheus.URL == "" {
+		c.Prometheus.URL = "http://localhost:9090"
+	}
+	if c.Prometheus.Timeout == 0 {
+		c.Prometheus.Timeout = 30 * time.Second
+	}
+
 }
 
 // Validate checks if the configuration is valid
@@ -107,6 +125,12 @@ func (c *Config) Validate() error {
 	if err := c.Database.Validate(); err != nil {
 		return fmt.Errorf("database configuration error: %w", err)
 	}
+
+	// Validate Prometheus
+	if err := c.validatePrometheus(); err != nil {
+		return fmt.Errorf("prometheus configuration error: %w", err)
+	}
+
 
 	return nil
 }
@@ -170,6 +194,9 @@ func (c *Config) expandEnvironmentVariables() {
 		c.Database.Neo4j.Password = expandEnvVar(c.Database.Neo4j.Password)
 		c.Database.Neo4j.Database = expandEnvVar(c.Database.Neo4j.Database)
 	}
+
+	// Expand Prometheus configuration
+	c.Prometheus.URL = expandEnvVar(c.Prometheus.URL)
 }
 
 // expandEnvVar expands environment variables in a string
@@ -251,4 +278,24 @@ func GetDefaultConfigPath() string {
 
 	// Default fallback
 	return "tm.yaml"
+}
+
+// validatePrometheus validates Prometheus configuration
+func (c *Config) validatePrometheus() error {
+	if c.Prometheus.URL == "" {
+		return fmt.Errorf("prometheus URL is required")
+	}
+	if c.Prometheus.Timeout <= 0 {
+		return fmt.Errorf("prometheus timeout must be positive")
+	}
+	return nil
+}
+
+
+// GetPrometheusConfig returns Prometheus client configuration
+func (c *Config) GetPrometheusConfig() prometheus.Config {
+	return prometheus.Config{
+		URL:     expandEnvVar(c.Prometheus.URL),
+		Timeout: c.Prometheus.Timeout,
+	}
 }
