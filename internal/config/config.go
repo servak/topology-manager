@@ -267,12 +267,6 @@ func (c *Config) expandEnvironmentVariables() {
 		c.Database.Postgres.SSLMode = expandEnvVar(c.Database.Postgres.SSLMode)
 	}
 
-	if c.Database.Neo4j != nil {
-		c.Database.Neo4j.URI = expandEnvVar(c.Database.Neo4j.URI)
-		c.Database.Neo4j.Username = expandEnvVar(c.Database.Neo4j.Username)
-		c.Database.Neo4j.Password = expandEnvVar(c.Database.Neo4j.Password)
-		c.Database.Neo4j.Database = expandEnvVar(c.Database.Neo4j.Database)
-	}
 
 	// Expand Prometheus configuration
 	c.Prometheus.URL = expandEnvVar(c.Prometheus.URL)

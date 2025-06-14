@@ -37,9 +37,6 @@ var configValidateCmd = &cobra.Command{
 
 		fmt.Println("✅ Configuration is valid")
 		fmt.Printf("Database type: %s\n", cfg.Database.Type)
-		fmt.Printf("Device types: %d configured\n", len(cfg.Hierarchy.DeviceTypes))
-		fmt.Printf("Naming rules: %d configured\n", len(cfg.Hierarchy.NamingRules))
-		fmt.Printf("Manual overrides: %d configured\n", len(cfg.Hierarchy.ManualOverrides))
 
 		return nil
 	},
@@ -65,9 +62,6 @@ var configShowCmd = &cobra.Command{
 		// Mask sensitive information
 		if cfg.Database.Postgres != nil && cfg.Database.Postgres.Password != "" {
 			cfg.Database.Postgres.Password = "***"
-		}
-		if cfg.Database.Neo4j != nil && cfg.Database.Neo4j.Password != "" {
-			cfg.Database.Neo4j.Password = "***"
 		}
 
 		data, err := yaml.Marshal(cfg)
@@ -95,34 +89,10 @@ var configExampleCmd = &cobra.Command{
 		}
 
 		exampleConfig := `# Network Topology Manager Configuration
-# This is an example configuration file with all available options
-
-hierarchy:
-  # Device type hierarchy levels (lower numbers = higher in hierarchy)
-  device_types:
-    core: 1
-    distribution: 2
-    access: 3
-    server: 4
-    unknown: 99
-  
-  # Automatic device type detection rules based on naming patterns
-  naming_rules:
-    - pattern: "^core-.*"
-      type: "core"
-    - pattern: "^dist-.*"
-      type: "distribution" 
-    - pattern: "^access-.*"
-      type: "access"
-    - pattern: "^server-.*"
-      type: "server"
-  
-  # Manual device type overrides
-  manual_overrides:
-    # "special-device-001": "core"
+# Device classification and hierarchy management system
 
 database:
-  # Database type: postgres or neo4j
+  # Database type: postgres
   type: postgres
   
   # PostgreSQL configuration
@@ -134,19 +104,10 @@ database:
     password: ${DB_PASSWORD:tm_password}    # Environment: DB_PASSWORD
     dbname: ${DB_NAME:topology_manager}     # Environment: DB_NAME
     sslmode: ${DB_SSLMODE:disable}          # Environment: DB_SSLMODE
-  
-  # Neo4j configuration (when type: neo4j)
-  # Environment variables are supported: ${VAR} or ${VAR:default}
-  neo4j:
-    uri: ${NEO4J_URI:bolt://localhost:7687}       # Environment: NEO4J_URI
-    username: ${NEO4J_USERNAME:neo4j}             # Environment: NEO4J_USERNAME
-    password: ${NEO4J_PASSWORD:neo4j_password}    # Environment: NEO4J_PASSWORD
-    database: ${NEO4J_DATABASE:neo4j}             # Environment: NEO4J_DATABASE
 
 # Environment Variable Examples:
 # export DB_HOST=production-db.example.com
 # export DB_PASSWORD=secure-password-from-vault
-# export NEO4J_PASSWORD=secure-neo4j-password
 `
 
 		err := os.WriteFile(outputPath, []byte(exampleConfig), 0644)

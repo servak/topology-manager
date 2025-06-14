@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/servak/topology-manager/internal/domain/topology"
-	"github.com/servak/topology-manager/internal/repository/neo4j"
 	"github.com/servak/topology-manager/internal/repository/postgres"
 )
 
@@ -12,7 +11,6 @@ import (
 type DatabaseConfig struct {
 	Type     string                   `yaml:"type"`
 	Postgres *postgres.PostgresConfig `yaml:"postgres,omitempty"`
-	Neo4j    *neo4j.Neo4jConfig       `yaml:"neo4j,omitempty"`
 }
 
 // Validate checks if the database configuration is valid
@@ -23,13 +21,8 @@ func (c *DatabaseConfig) Validate() error {
 			return fmt.Errorf("postgres configuration is required when type is postgres")
 		}
 		return c.Postgres.Validate()
-	case "neo4j":
-		if c.Neo4j == nil {
-			return fmt.Errorf("neo4j configuration is required when type is neo4j")
-		}
-		return c.Neo4j.Validate()
 	default:
-		return fmt.Errorf("unsupported database type: %s (supported: postgres, neo4j)", c.Type)
+		return fmt.Errorf("unsupported database type: %s (supported: postgres)", c.Type)
 	}
 }
 
@@ -44,12 +37,6 @@ func NewDatabase(config *DatabaseConfig) (topology.Repository, error) {
 		repo, err := postgres.NewPostgresRepository(config.Postgres.DSN())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create postgres repository: %w", err)
-		}
-		return repo, nil
-	case "neo4j":
-		repo, err := neo4j.NewNeo4jRepository(config.Neo4j)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create neo4j repository: %w", err)
 		}
 		return repo, nil
 	default:
