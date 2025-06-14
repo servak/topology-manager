@@ -141,9 +141,10 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				Type:     deviceType.typeName,
 				Hardware: deviceType.hardware,
 				Instance: fmt.Sprintf("dc1.%s", deviceType.prefix),
-				Location:  fmt.Sprintf("Rack-%d", (i/10)+1),
-				Status:    "up",
-				Layer:     deviceType.layer,
+				Location: fmt.Sprintf("Rack-%d", (i/10)+1),
+				Status:   "up",
+				// Layer:     deviceType.layer,
+				Layer: 99,
 				Metadata: map[string]string{
 					"datacenter": "dc1",
 					"rack":       fmt.Sprintf("rack-%d", (i/10)+1),

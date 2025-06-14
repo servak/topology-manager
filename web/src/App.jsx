@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import TopologyGraph from './components/TopologyGraph'
+import HierarchicalTopology from './components/HierarchicalTopology'
 import DeviceSelector from './components/DeviceSelector'
 import DetailPanel from './components/DetailPanel'
 import ReachabilityAnalysis from './components/ReachabilityAnalysis'
 import PathAnalysis from './components/PathAnalysis'
+import DeviceClassification from './components/DeviceClassification'
+import DeviceClassificationBoard from './components/DeviceClassificationBoard'
 import './App.css'
 
 function App() {
@@ -25,6 +28,7 @@ function App() {
     prefixMinLen: 3
   })
   const [expandedDevices, setExpandedDevices] = useState(new Set()) // 展開済みデバイスを追跡
+  const [viewMode, setViewMode] = useState('graph') // 'graph' or 'hierarchy'
 
   // URLパラメータからデバイスIDを読み込み
   useEffect(() => {
@@ -290,18 +294,43 @@ function App() {
 
               {topology && !loading && (
                 <div className="topology-container">
-                  <div className="topology-stats">
-                    <span>Nodes: {topology.stats.total_nodes}</span>
-                    <span>Edges: {topology.stats.total_edges}</span>
-                    {topology.stats?.total_groups > 0 && <span>Groups: {topology.stats.total_groups}</span>}
-                    <span>Root: {topology.root_device}</span>
-                    <span>Depth: {topology.depth}</span>
+                  <div className="topology-header">
+                    <div className="topology-stats">
+                      <span>Nodes: {topology.stats.total_nodes}</span>
+                      <span>Edges: {topology.stats.total_edges}</span>
+                      {topology.stats?.total_groups > 0 && <span>Groups: {topology.stats.total_groups}</span>}
+                      <span>Root: {topology.root_device}</span>
+                      <span>Depth: {topology.depth}</span>
+                    </div>
+                    <div className="view-mode-toggle">
+                      <button 
+                        className={`view-mode-btn ${viewMode === 'graph' ? 'active' : ''}`}
+                        onClick={() => setViewMode('graph')}
+                      >
+                        🗺️ グラフ表示
+                      </button>
+                      <button 
+                        className={`view-mode-btn ${viewMode === 'hierarchy' ? 'active' : ''}`}
+                        onClick={() => setViewMode('hierarchy')}
+                      >
+                        🏗️ 階層表示
+                      </button>
+                    </div>
                   </div>
-                  <TopologyGraph 
-                    topology={topology} 
-                    onObjectSelect={handleObjectSelect}
-                    onGroupExpand={handleGroupExpand}
-                  />
+                  
+                  {viewMode === 'graph' ? (
+                    <TopologyGraph 
+                      topology={topology} 
+                      onObjectSelect={handleObjectSelect}
+                      onGroupExpand={handleGroupExpand}
+                    />
+                  ) : (
+                    <HierarchicalTopology 
+                      topology={topology} 
+                      onDeviceSelect={handleNavigateToDevice}
+                      selectedDevice={selectedDevice}
+                    />
+                  )}
                 </div>
               )}
 
@@ -330,6 +359,8 @@ function App() {
         return <ReachabilityAnalysis />
       case 'path':
         return <PathAnalysis />
+      case 'classification':
+        return <DeviceClassificationBoard />
       default:
         return null
     }
@@ -358,6 +389,12 @@ function App() {
             onClick={() => setActiveTab('path')}
           >
             🛤️ 最短パス分析
+          </button>
+          <button 
+            className={`nav-tab ${activeTab === 'classification' ? 'active' : ''}`}
+            onClick={() => setActiveTab('classification')}
+          >
+            🏷️ デバイス分類
           </button>
         </nav>
         

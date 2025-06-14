@@ -454,3 +454,61 @@
     min-width: auto;
   }
 }
+
+/* Topology Header and View Mode Toggle */
+.topology-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 10px 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e1e8ed;
+}
+
+.view-mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: #ecf0f1;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.view-mode-btn {
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #7f8c8d;
+  transition: all 0.2s;
+}
+
+.view-mode-btn:hover {
+  background: #bdc3c7;
+  color: #2c3e50;
+}
+
+.view-mode-btn.active {
+  background: #3498db;
+  color: white;
+  box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
+}
+
+@media (max-width: 768px) {
+  .topology-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+  
+  .topology-stats {
+    justify-content: center;
+  }
+  
+  .view-mode-toggle {
+    justify-content: center;
+  }
+}

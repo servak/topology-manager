@@ -1,0 +1,354 @@
+.hierarchical-topology {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  padding: 20px;
+  max-height: 800px;
+  overflow-y: auto;
+}
+
+.hierarchy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #ecf0f1;
+}
+
+.hierarchy-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.2em;
+}
+
+.topology-info {
+  display: flex;
+  gap: 15px;
+  font-size: 14px;
+  color: #7f8c8d;
+}
+
+.hierarchy-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* レイヤーセクション */
+.layer-section {
+  border: 1px solid #ecf0f1;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.layer-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 15px;
+  background: #f8f9fa;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-left: 4px solid var(--layer-color);
+}
+
+.layer-header:hover {
+  background: #e9ecef;
+}
+
+.expand-icon {
+  transition: transform 0.2s;
+  font-size: 12px;
+  color: #7f8c8d;
+}
+
+.expand-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.layer-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.layer-name {
+  font-weight: bold;
+  color: #2c3e50;
+  font-size: 14px;
+  flex: 1;
+}
+
+.device-count {
+  color: #7f8c8d;
+  font-size: 12px;
+  background: #ecf0f1;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.layer-content {
+  background: white;
+  border-top: 1px solid #ecf0f1;
+}
+
+/* デバイス一覧 */
+.devices-list {
+  padding: 10px;
+}
+
+.device-section {
+  margin-bottom: 8px;
+}
+
+.device-item {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  border: 1px solid #ecf0f1;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fdfdfd;
+}
+
+.device-item:hover {
+  background: #f8f9fa;
+  border-color: #3498db;
+}
+
+.device-item.selected {
+  background: #e3f2fd;
+  border-color: #2196f3;
+  box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
+}
+
+.device-item.root {
+  border-color: #f39c12;
+  background: #fef5e7;
+}
+
+.device-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.device-icon {
+  font-size: 16px;
+}
+
+.device-name {
+  font-weight: bold;
+  color: #2c3e50;
+  font-size: 14px;
+  min-width: 120px;
+}
+
+.device-type {
+  color: #7f8c8d;
+  font-size: 12px;
+  text-transform: uppercase;
+  background: #ecf0f1;
+  padding: 2px 6px;
+  border-radius: 3px;
+  min-width: 60px;
+  text-align: center;
+}
+
+.device-status {
+  font-size: 12px;
+}
+
+.device-hardware {
+  color: #95a5a6;
+  font-size: 11px;
+  flex: 1;
+  text-align: right;
+}
+
+.root-badge {
+  background: #f39c12;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.connections-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: #f8f9fa;
+  border: 1px solid #ecf0f1;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #7f8c8d;
+  transition: all 0.2s;
+}
+
+.connections-toggle:hover {
+  background: #e9ecef;
+  border-color: #bdc3c7;
+}
+
+/* 接続先一覧 */
+.connections-list {
+  margin-top: 8px;
+  padding-left: 20px;
+  border-left: 2px solid #ecf0f1;
+}
+
+.connection-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  margin-bottom: 6px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-left: 3px solid #bdc3c7;
+}
+
+.connection-item:hover {
+  background: #e9ecef;
+  border-left-color: #3498db;
+}
+
+.connection-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #7f8c8d;
+}
+
+.port-info {
+  font-family: monospace;
+  background: #ecf0f1;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.connection-status {
+  font-size: 10px;
+}
+
+.connected-device {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.device-layer {
+  background: #3498db;
+  color: white;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: bold;
+  min-width: 20px;
+  text-align: center;
+}
+
+/* 凡例 */
+.hierarchy-legend {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #ecf0f1;
+}
+
+.hierarchy-legend h4 {
+  margin: 0 0 10px 0;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #7f8c8d;
+}
+
+.root-badge-small {
+  background: #f39c12;
+  color: white;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: bold;
+}
+
+.no-data {
+  text-align: center;
+  padding: 40px;
+  color: #7f8c8d;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .hierarchy-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+  
+  .topology-info {
+    justify-content: center;
+  }
+  
+  .device-main {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .device-hardware {
+    text-align: left;
+    flex: none;
+    width: 100%;
+    margin-top: 4px;
+  }
+  
+  .legend-items {
+    justify-content: center;
+  }
+}
+
+/* アニメーション */
+.layer-content {
+  animation: slideDown 0.2s ease-out;
+}
+
+.connections-list {
+  animation: slideDown 0.15s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+  }
+}

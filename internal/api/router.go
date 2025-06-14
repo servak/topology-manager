@@ -10,19 +10,22 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/servak/topology-manager/internal/api/handler"
 	apimiddleware "github.com/servak/topology-manager/internal/api/middleware"
+	"github.com/servak/topology-manager/internal/domain/classification"
 	"github.com/servak/topology-manager/internal/domain/topology"
 	"github.com/servak/topology-manager/internal/service"
 )
 
 type Server struct {
-	api                  huma.API
-	router               chi.Router
-	topologyService      *service.TopologyService
-	visualizationService *service.VisualizationService
-	topologyRepo         topology.Repository
+	api                   huma.API
+	router                chi.Router
+	topologyService       *service.TopologyService
+	visualizationService  *service.VisualizationService
+	classificationService *service.ClassificationService
+	topologyRepo          topology.Repository
+	classificationRepo    classification.Repository
 }
 
-func NewServer(topologyRepo topology.Repository) *Server {
+func NewServer(topologyRepo topology.Repository, classificationRepo classification.Repository) *Server {
 	router := chi.NewRouter()
 
 	// ミドルウェア
@@ -40,13 +43,16 @@ func NewServer(topologyRepo topology.Repository) *Server {
 	// サービス層の初期化
 	topologyService := service.NewTopologyService(topologyRepo)
 	visualizationService := service.NewVisualizationService(topologyRepo)
+	classificationService := service.NewClassificationService(classificationRepo, topologyRepo)
 
 	server := &Server{
-		api:                  api,
-		router:               router,
-		topologyService:      topologyService,
-		visualizationService: visualizationService,
-		topologyRepo:         topologyRepo,
+		api:                   api,
+		router:                router,
+		topologyService:       topologyService,
+		visualizationService:  visualizationService,
+		classificationService: classificationService,
+		topologyRepo:          topologyRepo,
+		classificationRepo:    classificationRepo,
 	}
 
 	server.registerRoutes()
@@ -58,11 +64,13 @@ func (s *Server) registerRoutes() {
 	// ハンドラーの初期化
 	topologyHandler := handler.NewTopologyHandler(s.topologyService)
 	visualizationHandler := handler.NewVisualizationHandler(s.visualizationService)
+	classificationHandler := handler.NewClassificationHandler(s.classificationService)
 	healthHandler := handler.NewHealthHandler(s.topologyRepo)
 
 	// ルート登録
 	topologyHandler.Register(s.api)
 	visualizationHandler.Register(s.api)
+	classificationHandler.RegisterRoutes(s.api)
 	healthHandler.Register(s.api)
 
 	// 静的ファイル配信（Web UI）

@@ -12,6 +12,7 @@ import (
 	"github.com/servak/topology-manager/internal/api"
 	"github.com/servak/topology-manager/internal/config"
 	"github.com/servak/topology-manager/internal/repository"
+	"github.com/servak/topology-manager/internal/repository/postgres"
 	"github.com/spf13/cobra"
 )
 
@@ -46,8 +47,15 @@ func runAPI(cmd *cobra.Command, args []string) {
 		log.Println("Connected to PostgreSQL")
 	}
 
+	// PostgreSQL specific implementation
+	pgRepo, ok := repo.(*postgres.PostgresRepository)
+	if !ok {
+		log.Fatalf("Classification repository requires PostgreSQL, got %T", repo)
+	}
+	
+	classificationRepo := postgres.NewClassificationRepository(pgRepo.GetDB())
 	// APIサーバーの初期化
-	server := api.NewServer(repo)
+	server := api.NewServer(repo, classificationRepo)
 
 	// HTTPサーバーの設定
 	httpServer := &http.Server{

@@ -5,7 +5,7 @@ PrometheusからSNMP/LLDP情報を収集し、ネットワーク機器の階層�
 ## 機能
 
 - PrometheusからLLDPメトリクス自動収集
-- デバイス階層分類（設定ファイルベース）
+- デバイス階層分類
 - インタラクティブなトポロジー可視化
 - OpenAPI準拠のREST API（Huma v2）
 - PostgreSQLによる永続化
@@ -14,7 +14,7 @@ PrometheusからSNMP/LLDP情報を収集し、ネットワーク機器の階層�
 ## アーキテクチャ
 
 ```
-Prometheus → Worker → PostgreSQL → API (Huma) → React UI
+Prometheus ← Worker → PostgreSQL → API (Huma) → React UI
 ```
 
 ### 技術構成
@@ -32,18 +32,13 @@ Prometheus → Worker → PostgreSQL → API (Huma) → React UI
 ```bash
 # PostgreSQL起動
 docker run -d --name postgres -p 5432:5432 -e POSTGRES_DB=topology_manager -e POSTGRES_USER=topology -e POSTGRES_PASSWORD=topology postgres:15-alpine
-
-# または Docker Compose使用
-cd deployments
-docker-compose up -d postgres
 ```
 
 ### 2. データベースセットアップ
 
 ```bash
 # マイグレーション実行
-export DATABASE_URL="postgres://topology:topology@localhost/topology_manager?sslmode=disable"
-go run ./cmd/migrate/main.go up
+go run ./cmd/ migrate up
 
 # または CLI使用
 ./topology-manager migrate up
@@ -53,7 +48,7 @@ go run ./cmd/migrate/main.go up
 
 ```bash
 # Goアプリケーション
-go build -o topology-manager ./cmd/main.go
+go build -o topology-manager ./cmd/
 
 # フロントエンド（オプション）
 cd web
@@ -242,36 +237,6 @@ go run ./cmd/main.go api
 cd web
 npm run dev
 ```
-
-### Docker Compose
-
-```bash
-cd deployments
-docker-compose up --build
-```
-
-## トラブルシューティング
-
-### PostgreSQL接続エラー
-- DATABASE_URL環境変数を確認
-- PostgreSQLの起動状態を確認
-- データベースとユーザーの存在を確認
-
-### マイグレーションエラー
-- マイグレーションファイルのパスを確認
-- PostgreSQLユーザーの権限を確認
-- `topology-manager migrate up` コマンドでマイグレーションを実行
-
-### Prometheus接続エラー
-- PROMETHEUS_URL環境変数を確認
-- Prometheusの起動状態を確認
-- LLDPメトリクス(`lldpRemSysName`)の存在を確認
-
-### 空のトポロジー
-- Prometheusにlldpメトリクスが存在するか確認
-- デバイス名が階層設定とマッチするか確認
-- ワーカーがデータ収集できているか確認
-- PostgreSQLにデバイスとリンクデータが保存されているか確認
 
 ## ライセンス
 

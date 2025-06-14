@@ -58,6 +58,10 @@ func (r *PostgresRepository) DB() *sqlx.DB {
 	return r.db
 }
 
+func (r *PostgresRepository) GetDB() *sql.DB {
+	return r.db.DB
+}
+
 func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 	db, err := sqlx.Connect("postgres", dsn)
 	if err != nil {
