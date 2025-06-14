@@ -1,6 +1,6 @@
 import React from 'react'
 
-function DetailPanel({ selectedObject, onClose }) {
+function DetailPanel({ selectedObject, onClose, onNavigateToDevice, onShowNeighbors, showNeighbors, onCloseNeighbors, onNeighborClick }) {
   if (!selectedObject) {
     return (
       <div className="detail-panel">
@@ -25,7 +25,14 @@ function DetailPanel({ selectedObject, onClose }) {
       
       <div className="detail-panel-content">
         {type === 'node' ? (
-          <NodeDetails data={data} />
+          <NodeDetails 
+            data={data} 
+            onNavigateToDevice={onNavigateToDevice}
+            onShowNeighbors={onShowNeighbors}
+            showNeighbors={showNeighbors}
+            onCloseNeighbors={onCloseNeighbors}
+            onNeighborClick={onNeighborClick}
+          />
         ) : (
           <EdgeDetails data={data} />
         )}
@@ -34,7 +41,7 @@ function DetailPanel({ selectedObject, onClose }) {
   )
 }
 
-function NodeDetails({ data }) {
+function NodeDetails({ data, onNavigateToDevice, onShowNeighbors, showNeighbors, onCloseNeighbors, onNeighborClick }) {
   return (
     <div className="node-details">
       <div className="detail-section">
@@ -92,22 +99,48 @@ function NodeDetails({ data }) {
         <button 
           className="action-button primary"
           onClick={() => {
-            // この機能は後で実装
-            console.log('Navigate to device:', data.id)
+            if (onNavigateToDevice) {
+              onNavigateToDevice(data.id)
+            }
           }}
+          disabled={!onNavigateToDevice}
         >
           View as Root
         </button>
         <button 
           className="action-button secondary"
           onClick={() => {
-            // この機能は後で実装
-            console.log('Show neighbors:', data.id)
+            if (onShowNeighbors) {
+              onShowNeighbors(data.id)
+            }
           }}
+          disabled={!onShowNeighbors}
         >
           Show Neighbors
         </button>
       </div>
+
+      {/* 隣接デバイス表示 */}
+      {showNeighbors && showNeighbors.deviceId === data.id && (
+        <div className="neighbors-display">
+          <h5>
+            隣接デバイス ({showNeighbors.neighbors.length}台)
+            <button className="neighbors-close" onClick={onCloseNeighbors}>×</button>
+          </h5>
+          <div className="neighbors-list">
+            {showNeighbors.neighbors.map((neighborId, index) => (
+              <div 
+                key={index}
+                className="neighbor-item"
+                onClick={() => onNeighborClick(neighborId)}
+                title={`${neighborId} をルートとして表示`}
+              >
+                {neighborId}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

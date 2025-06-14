@@ -75,11 +75,10 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 1rem;
 }
 
 .detail-section {
-  width: 350px;
+  width: 380px;
   flex-shrink: 0;
   border-left: 1px solid #e1e8ed;
   background: #f8f9fa;
@@ -89,7 +88,7 @@
   background-color: #f8d7da;
   color: #721c24;
   padding: 1rem;
-  margin-bottom: 1rem;
+  margin: 0.5rem;
   border: 1px solid #f5c6cb;
   border-radius: 4px;
 }
@@ -100,13 +99,13 @@
 
 .loading-message {
   text-align: center;
-  padding: 2rem;
+  padding: 2rem 0.5rem;
   color: #666;
 }
 
 .welcome-message {
   text-align: center;
-  padding: 4rem 2rem;
+  padding: 4rem 0.5rem;
   color: #666;
 }
 
@@ -120,8 +119,6 @@
   display: flex;
   flex-direction: column;
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   overflow: hidden;
 }
 
@@ -199,6 +196,7 @@
   display: flex;
   flex-direction: column;
   background: white;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.1);
 }
 
 .detail-panel-header {
@@ -249,6 +247,10 @@
 }
 
 /* Detail Sections */
+.detail-section {
+  margin-bottom: 1.5rem;
+}
+
 .detail-section h4 {
   margin: 0 0 0.75rem 0;
   font-size: 0.9rem;
@@ -289,22 +291,28 @@
 }
 
 .detail-row .value.device-type {
-  background: #3498db;
+  background: linear-gradient(135deg, #3498db, #2980b9);
   color: white;
-  padding: 0.2rem 0.5rem;
-  border-radius: 12px;
+  padding: 0.25rem 0.6rem;
+  border-radius: 14px;
   font-size: 0.8rem;
   font-weight: 500;
   text-transform: uppercase;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  display: inline-block;
+  width: auto;
 }
 
 .detail-row .value.root-device {
-  background: #f39c12;
+  background: linear-gradient(135deg, #f39c12, #e67e22);
   color: white;
-  padding: 0.2rem 0.5rem;
-  border-radius: 12px;
+  padding: 0.25rem 0.6rem;
+  border-radius: 14px;
   font-size: 0.8rem;
   font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  display: inline-block;
+  width: auto;
 }
 
 .detail-row .value.status.up {
@@ -319,33 +327,109 @@
 
 /* Action Buttons */
 .action-button {
-  display: block;
-  width: 100%;
-  padding: 0.6rem;
-  margin-bottom: 0.5rem;
+  display: inline-block;
+  width: auto;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  margin-right: 0.5rem;
   border: none;
-  border-radius: 4px;
-  font-size: 0.85rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.action-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .action-button.primary {
-  background: #3498db;
+  background: linear-gradient(135deg, #3498db, #2980b9);
   color: white;
+  border: 1px solid #2980b9;
 }
 
-.action-button.primary:hover {
-  background: #2980b9;
+.action-button.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2980b9, #1f618d);
 }
 
 .action-button.secondary {
-  background: #95a5a6;
+  background: linear-gradient(135deg, #95a5a6, #7f8c8d);
   color: white;
+  border: 1px solid #7f8c8d;
 }
 
-.action-button.secondary:hover {
-  background: #7f8c8d;
+.action-button.secondary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7f8c8d, #566573);
+}
+
+/* Neighbors Display */
+.neighbors-display {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e1e8ed;
+}
+
+.neighbors-display h5 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2c3e50;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.neighbors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.neighbor-item {
+  background: white;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.8rem;
+  color: #2c3e50;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.neighbor-item:hover {
+  background: #e3f2fd;
+  border-color: #2196f3;
+  transform: translateX(2px);
+}
+
+.neighbors-close {
+  background: none;
+  border: none;
+  color: #7f8c8d;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0;
+  margin-left: auto;
+}
+
+.neighbors-close:hover {
+  color: #2c3e50;
 }
 
 /* Responsive Design */

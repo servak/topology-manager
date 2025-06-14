@@ -14,6 +14,7 @@ function App() {
   const [depth, setDepth] = useState(3)
   const [selectedObject, setSelectedObject] = useState(null)
   const [activeTab, setActiveTab] = useState('topology')
+  const [showNeighbors, setShowNeighbors] = useState(null) // 隣接デバイス表示用
   const [groupingOptions, setGroupingOptions] = useState({
     enabled: true,  // デフォルトでグルーピングを有効化
     groupByPrefix: true,
@@ -23,6 +24,7 @@ function App() {
     maxGroupDepth: 2,
     prefixMinLen: 3
   })
+  const [expandedDevices, setExpandedDevices] = useState(new Set()) // 展開済みデバイスを追跡
 
   // URLパラメータからデバイスIDを読み込み
   useEffect(() => {
@@ -67,6 +69,26 @@ function App() {
       
       const data = await response.json()
       setTopology(data)
+      
+      // トポロジー読み込み完了後、rootデバイスを自動選択
+      if (data && data.nodes) {
+        const rootNode = data.nodes.find(node => node.is_root === true)
+        if (rootNode) {
+          console.log('Auto-selecting root device:', rootNode.id)
+          setSelectedObject({
+            type: 'node',
+            data: {
+              id: rootNode.id,
+              label: rootNode.name,
+              type: rootNode.type,
+              hardware: rootNode.hardware,
+              status: rootNode.status,
+              layer: rootNode.layer,
+              isRoot: rootNode.is_root
+            }
+          })
+        }
+      }
     } catch (err) {
       setError(err.message)
       console.error('Failed to fetch topology:', err)
@@ -97,6 +119,51 @@ function App() {
     setSelectedObject(null)
   }
 
+  // Actions用のコールバック関数
+  const handleNavigateToDevice = (deviceId) => {
+    console.log('Navigating to device:', deviceId)
+    setSelectedDevice(deviceId)
+    setSelectedObject(null) // 選択解除
+    fetchTopology(deviceId, depth)
+    
+    // URLも更新
+    const newUrl = `${window.location.pathname}?device=${encodeURIComponent(deviceId)}&depth=${depth}`
+    window.history.pushState({}, '', newUrl)
+  }
+
+  const handleShowNeighbors = (deviceId) => {
+    console.log('Showing neighbors for device:', deviceId)
+    if (!topology) return
+
+    // 隣接デバイスのIDを取得
+    const neighborIds = new Set()
+    topology.edges.forEach(edge => {
+      if (edge.source === deviceId) {
+        neighborIds.add(edge.target)
+      } else if (edge.target === deviceId) {
+        neighborIds.add(edge.source)
+      }
+    })
+
+    console.log('Neighbor devices:', Array.from(neighborIds))
+    
+    // 隣接デバイス情報を設定して表示
+    setShowNeighbors({
+      deviceId: deviceId,
+      neighbors: Array.from(neighborIds)
+    })
+  }
+
+  const handleCloseNeighbors = () => {
+    setShowNeighbors(null)
+  }
+
+  const handleNeighborClick = (neighborId) => {
+    // 隣接デバイスをクリックした時の処理
+    handleNavigateToDevice(neighborId)
+    setShowNeighbors(null) // 隣接デバイス表示を閉じる
+  }
+
   const handleGroupingChange = (newGroupingOptions) => {
     setGroupingOptions(newGroupingOptions)
     // グルーピング設定が変更されたら再取得
@@ -111,45 +178,89 @@ function App() {
     setLoading(true)
     try {
       // グループ情報を取得
-      const group = topology.groups.find(g => g.id === groupData.id)
+      const group = topology.groups?.find(g => g.id === groupData.id)
       if (!group) {
         console.error('Group not found:', groupData.id)
         return
       }
 
-      const response = await fetch('/api/topology/expand-group', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          group_id: group.id,
-          root_device_id: selectedDevice,
-          group_device_ids: group.device_ids,
-          current_topology: topology,
-          grouping_options: {
-            enabled: groupingOptions.enabled,
-            min_group_size: groupingOptions.minGroupSize,
-            max_depth: groupingOptions.maxGroupDepth,
-            group_by_prefix: groupingOptions.groupByPrefix,
-            group_by_type: groupingOptions.groupByType,
-            group_by_depth: groupingOptions.groupByDepth,
-            prefix_min_len: groupingOptions.prefixMinLen
-          },
-          expand_depth: 2
-        })
-      })
+      console.log('Expanding group with devices:', group.device_ids)
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      // 展開済みデバイスに追加
+      const newExpandedDevices = new Set(expandedDevices)
+      group.device_ids.forEach(deviceId => newExpandedDevices.add(deviceId))
+      setExpandedDevices(newExpandedDevices)
+
+      // 各グループ内デバイスから新しいトポロジーを取得
+      const expandedNodesMap = new Map()
+      const expandedEdgesMap = new Map()
+
+      for (const deviceId of group.device_ids) {
+        const params = new URLSearchParams({
+          depth: '2',
+          enable_grouping: groupingOptions.enabled.toString(),
+          min_group_size: Math.max(groupingOptions.minGroupSize + 2, 5).toString(), // より厳しい条件
+          max_group_depth: Math.max(groupingOptions.maxGroupDepth + 1, 3).toString(), // より深いレベルでグループ化
+          group_by_prefix: groupingOptions.groupByPrefix.toString(),
+          group_by_type: groupingOptions.groupByType.toString(),
+          group_by_depth: groupingOptions.groupByDepth.toString(),
+          prefix_min_len: groupingOptions.prefixMinLen.toString()
+        })
+
+        const response = await fetch(`/api/topology/${encodeURIComponent(deviceId)}/expand?${params}`)
+        
+        if (!response.ok) {
+          console.warn(`Failed to expand from device ${deviceId}: ${response.status}`)
+          continue
+        }
+
+        const data = await response.json()
+        
+        // 新しいノードをマップに追加（重複を避ける）
+        data.nodes.forEach(node => {
+          expandedNodesMap.set(node.id, node)
+        })
+        
+        // 新しいエッジをマップに追加（重複を避ける）
+        data.edges.forEach(edge => {
+          expandedEdgesMap.set(edge.id, edge)
+        })
       }
 
-      const data = await response.json()
-      console.log('Group expand response:', data)
-      console.log('Current topology nodes before update:', topology.nodes.length)
-      console.log('Expanded topology nodes:', data.expanded_topology.nodes.length)
-      setTopology(data.expanded_topology)
-      console.log('Group expanded successfully. New nodes:', data.new_nodes.length, 'New edges:', data.new_edges.length)
+      // 既存のトポロジーを更新
+      const updatedTopology = { ...topology }
+
+      // グループノードを削除
+      updatedTopology.nodes = updatedTopology.nodes.filter(node => node.id !== group.id)
+      
+      // グループに接続されたエッジを削除
+      updatedTopology.edges = updatedTopology.edges.filter(edge => 
+        edge.source !== group.id && edge.target !== group.id
+      )
+      
+      // グループ情報を削除
+      updatedTopology.groups = (updatedTopology.groups || []).filter(g => g.id !== group.id)
+
+      // 新しいノードとエッジを追加（既存のものと重複しないように）
+      expandedNodesMap.forEach((node, nodeId) => {
+        if (!updatedTopology.nodes.find(n => n.id === nodeId)) {
+          updatedTopology.nodes.push(node)
+        }
+      })
+      
+      expandedEdgesMap.forEach((edge, edgeId) => {
+        if (!updatedTopology.edges.find(e => e.id === edgeId)) {
+          updatedTopology.edges.push(edge)
+        }
+      })
+
+      // 統計情報を更新
+      updatedTopology.stats.total_nodes = updatedTopology.nodes.length
+      updatedTopology.stats.total_edges = updatedTopology.edges.length
+      updatedTopology.stats.total_groups = (updatedTopology.groups || []).length
+
+      setTopology(updatedTopology)
+      console.log('Group expanded successfully. Total nodes:', updatedTopology.nodes.length, 'Total edges:', updatedTopology.edges.length)
     } catch (err) {
       setError(err.message)
       console.error('Failed to expand group:', err)
@@ -182,7 +293,7 @@ function App() {
                   <div className="topology-stats">
                     <span>Nodes: {topology.stats.total_nodes}</span>
                     <span>Edges: {topology.stats.total_edges}</span>
-                    {topology.stats.total_groups > 0 && <span>Groups: {topology.stats.total_groups}</span>}
+                    {topology.stats?.total_groups > 0 && <span>Groups: {topology.stats.total_groups}</span>}
                     <span>Root: {topology.root_device}</span>
                     <span>Depth: {topology.depth}</span>
                   </div>
@@ -206,6 +317,11 @@ function App() {
               <DetailPanel 
                 selectedObject={selectedObject} 
                 onClose={handleObjectDeselect}
+                onNavigateToDevice={handleNavigateToDevice}
+                onShowNeighbors={handleShowNeighbors}
+                showNeighbors={showNeighbors}
+                onCloseNeighbors={handleCloseNeighbors}
+                onNeighborClick={handleNeighborClick}
               />
             </div>
           </div>

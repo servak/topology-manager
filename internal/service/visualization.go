@@ -534,27 +534,28 @@ func (s *VisualizationService) applyGrouping(nodes []visualization.VisualNode, e
 		filteredNodes = append(filteredNodes, groupVisualNode)
 	}
 	
-	// エッジをフィルタリング（グループ内部のエッジを除外し、グループとの接続エッジを作成）
+	// シンプルなエッジ変換アプローチ
 	filteredEdges := make([]visualization.VisualEdge, 0)
 	edgeIDMap := make(map[string]bool) // 重複エッジを防ぐ
+	
+	fmt.Printf("Processing %d edges for grouping\n", len(edges))
 	
 	for _, edge := range edges {
 		sourceGrouped := groupedDeviceIDs[edge.Source]
 		targetGrouped := groupedDeviceIDs[edge.Target]
 		
-		// 両方ともグループ化されていない場合はそのまま保持
+		fmt.Printf("Edge %s: %s->%s, sourceGrouped=%v, targetGrouped=%v\n", 
+			edge.ID, edge.Source, edge.Target, sourceGrouped, targetGrouped)
+		
+		// Case 1: 両方ともグループ化されていない → そのまま保持
 		if !sourceGrouped && !targetGrouped {
 			filteredEdges = append(filteredEdges, edge)
+			fmt.Printf("  Kept original edge\n")
 			continue
 		}
 		
-		// 片方がグループ化されている場合、グループノードとの接続エッジを作成
-		// ただし、グループより先のノードとの接続は作成しない
-		sourceAfterGroup := nodesAfterGroups[edge.Source]
-		targetAfterGroup := nodesAfterGroups[edge.Target]
-		
-		if sourceGrouped && !targetGrouped && !targetAfterGroup {
-			// ソースがグループ化されていて、ターゲットがグループの先でない場合
+		// Case 2: ソースのみグループ化 → グループ->ターゲットのエッジ作成
+		if sourceGrouped && !targetGrouped {
 			groupID := s.findGroupIDForDevice(edge.Source, groups)
 			if groupID != "" {
 				newEdgeID := fmt.Sprintf("%s-%s", groupID, edge.Target)
@@ -571,10 +572,14 @@ func (s *VisualizationService) applyGrouping(nodes []visualization.VisualNode, e
 					}
 					filteredEdges = append(filteredEdges, newEdge)
 					edgeIDMap[newEdgeID] = true
+					fmt.Printf("  Created group edge: %s->%s\n", groupID, edge.Target)
 				}
 			}
-		} else if !sourceGrouped && targetGrouped && !sourceAfterGroup {
-			// ターゲットがグループ化されていて、ソースがグループの先でない場合
+			continue
+		}
+		
+		// Case 3: ターゲットのみグループ化 → ソース->グループのエッジ作成
+		if !sourceGrouped && targetGrouped {
 			groupID := s.findGroupIDForDevice(edge.Target, groups)
 			if groupID != "" {
 				newEdgeID := fmt.Sprintf("%s-%s", edge.Source, groupID)
@@ -591,11 +596,17 @@ func (s *VisualizationService) applyGrouping(nodes []visualization.VisualNode, e
 					}
 					filteredEdges = append(filteredEdges, newEdge)
 					edgeIDMap[newEdgeID] = true
+					fmt.Printf("  Created group edge: %s->%s\n", edge.Source, groupID)
 				}
 			}
+			continue
 		}
-		// 両方がグループ化されている場合は内部エッジなので除外
+		
+		// Case 4: 両方がグループ化 → 内部エッジなので除外
+		fmt.Printf("  Skipped internal edge\n")
 	}
+	
+	fmt.Printf("Final filtered edges: %d\n", len(filteredEdges))
 	
 	return filteredNodes, filteredEdges
 }

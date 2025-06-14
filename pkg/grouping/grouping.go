@@ -14,7 +14,7 @@ type Group struct {
 
 // GroupByLongestCommonPrefix groups device names by their longest common prefix
 func GroupByLongestCommonPrefix(deviceNames []string, minGroupSize int) []Group {
-	if len(deviceNames) <= minGroupSize {
+	if len(deviceNames) < minGroupSize {
 		return []Group{}
 	}
 
@@ -120,19 +120,19 @@ func findGroupPrefix(devices []string) string {
 		}
 	}
 
-	// Ensure prefix ends at a logical boundary (e.g., digit, dash, dot)
+	// Ensure prefix ends at a logical boundary (e.g., after dash, dot, underscore)
 	if len(prefix) > 0 {
 		lastChar := prefix[len(prefix)-1]
-		if lastChar >= '0' && lastChar <= '9' ||
-			lastChar == '-' || lastChar == '.' || lastChar == '_' {
+		
+		// If it already ends with a separator, keep it
+		if lastChar == '-' || lastChar == '.' || lastChar == '_' {
 			return prefix
 		}
 
-		// Find the last logical boundary
+		// Find the last logical separator and include it
 		for i := len(prefix) - 1; i >= 0; i-- {
 			char := prefix[i]
-			if char >= '0' && char <= '9' ||
-				char == '-' || char == '.' || char == '_' {
+			if char == '-' || char == '.' || char == '_' {
 				return prefix[:i+1]
 			}
 		}

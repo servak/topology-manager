@@ -31,6 +31,7 @@ func init() {
 	// rootCmd.AddCommand(workerCmd) // TODO: 後で実装
 	rootCmd.AddCommand(migrateCmd)
 	rootCmd.AddCommand(seedDataCmd)
+	rootCmd.AddCommand(seedDataEnhancedCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 

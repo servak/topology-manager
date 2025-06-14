@@ -38,7 +38,7 @@ function TopologyGraph({ topology, onObjectSelect, onGroupExpand }) {
     console.log('TopologyGraph re-rendering with topology:', {
       nodes: topology.nodes.length,
       edges: topology.edges.length,
-      groups: topology.groups.length
+      groups: topology.groups?.length || 0
     })
 
     if (cyRef.current) {
@@ -68,6 +68,13 @@ function TopologyGraph({ topology, onObjectSelect, onGroupExpand }) {
         }
       }))
     ]
+
+    console.log('Cytoscape elements:', {
+      nodes: elements.filter(e => !e.data.source).length,
+      edges: elements.filter(e => e.data.source).length,
+      sampleNode: elements.find(e => !e.data.source),
+      sampleEdge: elements.find(e => e.data.source)
+    })
 
     const cy = cytoscape({
       container: containerRef.current,
