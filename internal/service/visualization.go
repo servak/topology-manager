@@ -26,6 +26,81 @@ func (s *VisualizationService) GetVisualTopology(ctx context.Context, rootDevice
 	})
 }
 
+// GetSimpleVisualTopology returns a simplified visual topology without grouping for hierarchical display
+func (s *VisualizationService) GetSimpleVisualTopology(ctx context.Context, rootDeviceID string, depth int) (*visualization.VisualTopology, error) {
+	if depth <= 0 {
+		depth = 3
+	}
+
+	// ルートデバイスの存在確認
+	rootDevice, err := s.topologyRepo.GetDevice(ctx, rootDeviceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get root device: %w", err)
+	}
+	if rootDevice == nil {
+		return nil, fmt.Errorf("root device %s not found", rootDeviceID)
+	}
+
+	// サブトポロジー抽出
+	devices, links, err := s.topologyRepo.ExtractSubTopology(ctx, rootDeviceID, topology.SubTopologyOptions{
+		Radius: depth,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract sub-topology: %w", err)
+	}
+
+	// シンプルなビジュアルノード作成（グループ化なし）
+	visualNodes := make([]visualization.VisualNode, 0, len(devices))
+	nodeMap := make(map[string]*visualization.VisualNode, len(devices))
+
+	for _, device := range devices {
+		visualNode := visualization.VisualNode{
+			ID:       device.ID,
+			Name:     device.ID,
+			Type:     device.Type,
+			Hardware: device.Hardware,
+			Status:   "active", // default status since status field removed
+			Layer:    s.getDeviceLayer(device.LayerID),
+			IsRoot:   device.ID == rootDeviceID,
+			Position: visualization.Position{X: 0, Y: 0}, // レイアウト計算で後から設定
+			Style:    s.getNodeStyle(device.Type, "active", device.ID == rootDeviceID),
+		}
+		visualNodes = append(visualNodes, visualNode)
+		nodeMap[device.ID] = &visualNode
+	}
+
+	// シンプルなビジュアルエッジ作成
+	visualEdges := make([]visualization.VisualEdge, 0, len(links))
+	for _, link := range links {
+		// 両方のノードが存在することを確認
+		if nodeMap[link.SourceID] != nil && nodeMap[link.TargetID] != nil {
+			visualEdge := visualization.VisualEdge{
+				ID:         link.ID,
+				Source:     link.SourceID,
+				Target:     link.TargetID,
+				LocalPort:  link.SourcePort,
+				RemotePort: link.TargetPort,
+				Status:     "active", // default status since status field removed
+				Weight:     link.Weight,
+				Style:      s.getEdgeStyle("active", link.Weight),
+			}
+			visualEdges = append(visualEdges, visualEdge)
+		}
+	}
+
+	// シンプルなレイアウト計算（階層ベース）
+	s.calculateHierarchicalLayout(visualNodes, visualEdges, rootDeviceID)
+
+	visualTopology := &visualization.VisualTopology{
+		Nodes:      visualNodes,
+		Edges:      visualEdges,
+		RootDevice: rootDeviceID,
+		Timestamp:  time.Now().Unix(),
+	}
+
+	return visualTopology, nil
+}
+
 func (s *VisualizationService) GetVisualTopologyWithGrouping(ctx context.Context, rootDeviceID string, depth int, groupingOpts visualization.GroupingOptions) (*visualization.VisualTopology, error) {
 	if depth <= 0 {
 		depth = 3
@@ -62,11 +137,11 @@ func (s *VisualizationService) GetVisualTopologyWithGrouping(ctx context.Context
 			Name:     device.ID, // IDをNameとして使用
 			Type:     device.Type,
 			Hardware: device.Hardware,
-			Status:   device.Status,
-			Layer:    device.Layer,
+			Status:   "active", // default status since status field removed
+			Layer:    s.getDeviceLayer(device.LayerID),
 			IsRoot:   device.ID == rootDeviceID,
 			Position: visualization.Position{X: 0, Y: 0}, // レイアウト計算で後から設定
-			Style:    s.getNodeStyle(device.Type, device.Status, device.ID == rootDeviceID),
+			Style:    s.getNodeStyle(device.Type, "active", device.ID == rootDeviceID),
 		}
 		visualNodes = append(visualNodes, visualNode)
 		nodeMap[device.ID] = &visualNode
@@ -82,9 +157,9 @@ func (s *VisualizationService) GetVisualTopologyWithGrouping(ctx context.Context
 				Target:     link.TargetID,
 				LocalPort:  link.SourcePort,
 				RemotePort: link.TargetPort,
-				Status:     link.Status,
+				Status:     "active", // default status since status field removed
 				Weight:     link.Weight,
-				Style:      s.getEdgeStyle(link.Status, link.Weight),
+				Style:      s.getEdgeStyle("active", link.Weight),
 			}
 			visualEdges = append(visualEdges, visualEdge)
 		}
@@ -183,7 +258,7 @@ func (s *VisualizationService) exploreTopology(ctx context.Context, rootDeviceID
 			}
 
 			// 階層に基づく包含判定
-			shouldInclude := s.shouldIncludeNeighbor(rootLayer, neighbor.Layer, current.level, depth)
+			shouldInclude := s.shouldIncludeNeighbor(rootLayer, s.getDeviceLayer(neighbor.LayerID), current.level, depth)
 			if shouldInclude {
 				// リンクを追加（重複チェック）
 				linkKey := fmt.Sprintf("%s-%s", link.SourceID, link.TargetID)
@@ -795,11 +870,11 @@ func (s *VisualizationService) ExpandGroupInTopology(
 				Name:     device.ID,
 				Type:     device.Type,
 				Hardware: device.Hardware,
-				Status:   device.Status,
-				Layer:    device.Layer,
+				Status:   "active", // default status since status field removed
+				Layer:    s.getDeviceLayer(device.LayerID),
 				IsRoot:   device.ID == rootDeviceID,
 				Position: visualization.Position{X: 0, Y: 0},
-				Style:    s.getNodeStyle(device.Type, device.Status, device.ID == rootDeviceID),
+				Style:    s.getNodeStyle(device.Type, "active", device.ID == rootDeviceID),
 			}
 			newVisualNodes = append(newVisualNodes, visualNode)
 			fmt.Printf("Added new visual node: %s\n", device.ID)
@@ -818,9 +893,9 @@ func (s *VisualizationService) ExpandGroupInTopology(
 				Target:     link.TargetID,
 				LocalPort:  link.SourcePort,
 				RemotePort: link.TargetPort,
-				Status:     link.Status,
+				Status:     "active", // default status since status field removed
 				Weight:     link.Weight,
-				Style:      s.getEdgeStyle(link.Status, link.Weight),
+				Style:      s.getEdgeStyle("active", link.Weight),
 			}
 			newVisualEdges = append(newVisualEdges, visualEdge)
 		}
@@ -996,4 +1071,43 @@ func (s *VisualizationService) edgeExistsInTopology(edgeID string, topology visu
 		}
 	}
 	return false
+}
+
+// getDeviceLayer converts layer_id to layer value for compatibility
+func (s *VisualizationService) getDeviceLayer(layerID *int) int {
+	if layerID == nil {
+		return 5 // default to server layer if not specified
+	}
+	return *layerID
+}
+
+// calculateHierarchicalLayout calculates positions for hierarchical display
+func (s *VisualizationService) calculateHierarchicalLayout(nodes []visualization.VisualNode, edges []visualization.VisualEdge, rootDeviceID string) {
+	// 階層別にノードを分類
+	layers := make(map[int][]int) // layer -> node indices
+	
+	for i, node := range nodes {
+		layer := node.Layer
+		if layers[layer] == nil {
+			layers[layer] = make([]int, 0)
+		}
+		layers[layer] = append(layers[layer], i)
+	}
+	
+	// Y座標は階層別に設定
+	layerSpacing := 150.0
+	nodeSpacing := 120.0
+	
+	for layer, nodeIndices := range layers {
+		y := float64(layer) * layerSpacing
+		
+		// X座標は同一階層内で均等配置
+		startX := -(float64(len(nodeIndices)-1) * nodeSpacing) / 2
+		
+		for i, nodeIndex := range nodeIndices {
+			x := startX + float64(i)*nodeSpacing
+			nodes[nodeIndex].Position.X = x
+			nodes[nodeIndex].Position.Y = y
+		}
+	}
 }

@@ -199,7 +199,6 @@ func (p *LLDPParser) BuildTopologyFromLLDP(ctx context.Context) ([]topology.Devi
 			SourcePort: p.normalizePortName(neighbor.LocalPort),
 			TargetPort: p.normalizePortName(neighbor.RemotePortID),
 			Weight:     1.0,
-			Status:     "up",
 			Metadata: map[string]string{
 				"discovery_method": "lldp",
 				"remote_chassis_id": neighbor.RemoteChassisID,
@@ -263,8 +262,7 @@ func (p *LLDPParser) createDeviceFromInfo(deviceID, identifier string, deviceMap
 	device := topology.Device{
 		ID:        deviceID,
 		Type:      "unknown",
-		Status:    "up",
-		Layer:     99, // Default layer for unknown devices
+		LayerID:   nil, // will be set by classification
 		Metadata:  make(map[string]string),
 		LastSeen:  now,
 		CreatedAt: now,
@@ -277,7 +275,7 @@ func (p *LLDPParser) createDeviceFromInfo(deviceID, identifier string, deviceMap
 			device.Hardware = p.extractHardwareFromDesc(deviceInfo.SystemDesc)
 		}
 		if deviceInfo.Location != "" {
-			device.Location = deviceInfo.Location
+			device.Metadata["location"] = deviceInfo.Location
 		}
 		if deviceInfo.Contact != "" {
 			device.Metadata["contact"] = deviceInfo.Contact
@@ -287,10 +285,10 @@ func (p *LLDPParser) createDeviceFromInfo(deviceID, identifier string, deviceMap
 		}
 	}
 
-	// Determine device type and layer from device ID patterns
-	deviceType, layer := p.determineDeviceType(device.ID)
+	// Determine device type from device ID patterns
+	deviceType, _ := p.determineDeviceType(device.ID)
 	device.Type = deviceType
-	device.Layer = layer
+	// LayerID will be set by classification service
 
 	return device
 }

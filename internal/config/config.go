@@ -49,10 +49,10 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	config := &Config{}
-	
+
 	// Set defaults
 	config.setDefaults()
-	
+
 	if err := yaml.Unmarshal(data, config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
@@ -113,7 +113,7 @@ func (c *Config) setDefaults() {
 	if c.Prometheus.Timeout == 0 {
 		c.Prometheus.Timeout = 30 * time.Second
 	}
-	
+
 	// Set default metrics mapping
 	c.setDefaultMetricsMapping()
 
@@ -149,9 +149,7 @@ func (c *Config) setDefaultMetricsMapping() {
 					MetricName: "snmp_device_info",
 					Labels: map[string]string{
 						"device_id":  "instance",
-						"ip_address": "instance",
 						"hardware":   "sysDescr",
-						"location":   "sysLocation",
 					},
 				},
 				Fallbacks: []prometheus.MetricMapping{
@@ -159,18 +157,14 @@ func (c *Config) setDefaultMetricsMapping() {
 						MetricName: "node_uname_info",
 						Labels: map[string]string{
 							"device_id":  "instance",
-							"ip_address": "instance",
 							"hardware":   "machine",
-							"location":   "",
 						},
 					},
 					{
 						MetricName: "lldp_local_info",
 						Labels: map[string]string{
 							"device_id":  "chassis_id",
-							"ip_address": "mgmt_address",
 							"hardware":   "system_description",
-							"location":   "system_location",
 						},
 					},
 				},
@@ -204,7 +198,7 @@ func (c *Config) setDefaultMetricsMapping() {
 		c.Prometheus.FieldRequirements = map[string]prometheus.FieldRequirement{
 			"device_info": {
 				Required: []string{"device_id"},
-				Optional: []string{"ip_address", "hardware", "location"},
+				Optional: []string{"hardware"},
 			},
 			"lldp_neighbors": {
 				Required: []string{"source_device", "target_device"},
@@ -228,12 +222,12 @@ func (c *Config) validateHierarchy() error {
 		if rule.Type == "" {
 			return fmt.Errorf("naming rule %d: type cannot be empty", i)
 		}
-		
+
 		// Validate regex pattern
 		if _, err := regexp.Compile(rule.Pattern); err != nil {
 			return fmt.Errorf("naming rule %d: invalid regex pattern '%s': %w", i, rule.Pattern, err)
 		}
-		
+
 		// Check if type exists in device types
 		if _, exists := c.Hierarchy.DeviceTypes[rule.Type]; !exists {
 			return fmt.Errorf("naming rule %d: type '%s' not found in device_types", i, rule.Type)

@@ -11,6 +11,8 @@ import (
 	"github.com/servak/topology-manager/internal/config"
 	"github.com/servak/topology-manager/internal/domain/topology"
 	"github.com/servak/topology-manager/internal/repository"
+	"github.com/servak/topology-manager/internal/repository/postgres"
+	"github.com/servak/topology-manager/internal/service"
 	"github.com/spf13/cobra"
 )
 
@@ -24,6 +26,7 @@ var (
 	dcLocation        string
 	locationDelimiter string
 	includeServers    bool
+	enableAutoClassifyEnhanced bool
 )
 
 var seedDataEnhancedCmd = &cobra.Command{
@@ -47,6 +50,7 @@ func init() {
 	seedDataEnhancedCmd.Flags().StringVar(&locationDelimiter, "location-delimiter", ".", "Delimiter for location suffix")
 	seedDataEnhancedCmd.Flags().BoolVar(&includeServers, "include-servers", true, "Include server devices")
 	seedDataEnhancedCmd.Flags().BoolVarP(&clearFirst, "clear", "", false, "Clear existing data before seeding")
+	seedDataEnhancedCmd.Flags().BoolVar(&enableAutoClassifyEnhanced, "enable-auto-classify", true, "Enable automatic device classification for enhanced seed data")
 }
 
 type topologyGenerator struct {
@@ -89,19 +93,18 @@ func (g *topologyGenerator) generateLinkID() string {
 }
 
 func (g *topologyGenerator) createDevice(id, deviceType, hardware string, layer int) topology.Device {
+	layerID := layer
 	return topology.Device{
-		ID:       id,
-		Type:     deviceType,
-		Hardware: hardware,
-		Instance: fmt.Sprintf("dc1.%s", deviceType),
-		Location: fmt.Sprintf("Rack-%d", (g.deviceCounter/10)+1),
-		Status:   "up",
-		Layer:    layer,
+		ID:           id,
+		Type:         deviceType,
+		Hardware:     hardware,
+		LayerID:      &layerID,
+		DeviceType:   "", // will be set by classification
+		ClassifiedBy: "", // will be set by classification
 		Metadata: map[string]string{
 			"datacenter": "dc1",
 			"rack":       fmt.Sprintf("rack-%d", (g.deviceCounter/10)+1),
 			"role":       deviceType,
-			"location":   g.dcSuffix,
 		},
 		LastSeen:  g.now,
 		CreatedAt: g.now,
@@ -117,7 +120,6 @@ func (g *topologyGenerator) createLink(sourceID, targetID, sourcePort, targetPor
 		SourcePort: sourcePort,
 		TargetPort: targetPort,
 		Weight:     weight,
-		Status:     "up",
 		Metadata: map[string]string{
 			"link_type": linkType,
 			"speed":     speed,
@@ -597,6 +599,56 @@ func runSeedDataEnhanced(cmd *cobra.Command, args []string) {
 	networkDevices := filterDevicesByNonServerTypes(devices)
 	serverDevices := filterDevicesByType(devices, "server")
 	
+	// 自動分類の実行
+	if enableAutoClassifyEnhanced {
+		log.Println("Applying auto-classification to enhanced seed devices...")
+		
+		// PostgreSQL specific implementation for classification repository
+		pgRepo, ok := repo.(*postgres.PostgresRepository)
+		if !ok {
+			log.Printf("Warning: Auto-classification requires PostgreSQL, got %T. Skipping classification.", repo)
+		} else {
+			classificationRepo := postgres.NewClassificationRepository(pgRepo.GetDB())
+			classificationService := service.NewClassificationService(classificationRepo, repo)
+			
+			// Extract device IDs
+			deviceIDs := make([]string, len(devices))
+			for i, device := range devices {
+				deviceIDs[i] = device.ID
+			}
+			
+			// Apply classification rules
+			classifications, err := classificationService.ApplyClassificationRules(ctx, deviceIDs)
+			if err != nil {
+				log.Printf("Auto-classification failed: %v", err)
+			} else {
+				if len(classifications) > 0 {
+					log.Printf("Successfully auto-classified %d devices:", len(classifications))
+					
+					// Group by device type for better readability
+					typeCount := make(map[string]int)
+					for _, c := range classifications {
+						typeCount[c.DeviceType]++
+						if len(classifications) <= 20 { // Only show details for small datasets
+							log.Printf("  - %s → Layer %d (%s)", c.DeviceID, c.Layer, c.DeviceType)
+						}
+					}
+					
+					// Show summary for large datasets
+					if len(classifications) > 20 {
+						log.Printf("Classification summary by type:")
+						for deviceType, count := range typeCount {
+							log.Printf("  - %s: %d devices", deviceType, count)
+						}
+					}
+				} else {
+					log.Printf("No devices matched existing classification rules (this is normal for initial setup)")
+					log.Printf("You can create classification rules in the web interface and then re-run with auto-classification")
+				}
+			}
+		}
+	}
+
 	log.Printf("\n=== Topology Generation Summary ===")
 	log.Printf("Topology type: %s", topologyType)
 	log.Printf("Network devices: %d", len(networkDevices))

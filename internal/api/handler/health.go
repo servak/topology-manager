@@ -28,7 +28,7 @@ func (h *HealthHandler) Register(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "health-check",
 		Method:      http.MethodGet,
-		Path:        "/api/health",
+		Path:        "/api/v1/health",
 		Summary:     "Health check",
 		Tags:        []string{"health"},
 	}, h.HealthCheck)

@@ -47,7 +47,6 @@ type UnclassifiedDevice struct {
 	Name      string `json:"name"`
 	Type      string `json:"type"`
 	Hardware  string `json:"hardware"`
-	IPAddress string `json:"ip_address"`
 }
 
 // Request/Response types for classification rules
@@ -354,7 +353,7 @@ func (h *ClassificationHandler) ListUnclassifiedDevices(ctx context.Context, req
 	} else if limit > 1000 {
 		limit = 1000
 	}
-	
+
 	offset := req.Offset
 	if offset < 0 {
 		offset = 0
@@ -372,7 +371,6 @@ func (h *ClassificationHandler) ListUnclassifiedDevices(ctx context.Context, req
 			Name:      device.ID, // DeviceにNameがないため、IDを使用
 			Type:      device.Type,
 			Hardware:  device.Hardware,
-			IPAddress: device.Instance, // IPAddressがないため、Instanceを使用
 		}
 	}
 
@@ -428,12 +426,12 @@ func (h *ClassificationHandler) CreateClassificationRule(ctx context.Context, re
 	if len(req.Body.Conditions) == 0 {
 		return nil, huma.Error400BadRequest("At least one condition is required")
 	}
-	
+
 	logic := req.Body.LogicOperator
 	if logic == "" {
 		logic = "AND"
 	}
-	
+
 	rule := classification.ClassificationRule{
 		Name:          req.Body.Name,
 		Description:   req.Body.Description,
@@ -459,12 +457,12 @@ func (h *ClassificationHandler) UpdateClassificationRule(ctx context.Context, re
 	if len(req.Body.Conditions) == 0 {
 		return nil, huma.Error400BadRequest("At least one condition is required")
 	}
-	
+
 	logic := req.Body.LogicOperator
 	if logic == "" {
 		logic = "AND"
 	}
-	
+
 	rule := classification.ClassificationRule{
 		ID:            req.RuleID,
 		Name:          req.Body.Name,

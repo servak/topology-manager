@@ -139,7 +139,10 @@ func (e *MetricsExtractor) tryExtractDevices(ctx context.Context, mapping Metric
 		}
 
 		if location, exists := e.extractLabelValue(sample.Metric, mapping.Labels, "location"); exists && location != "" {
-			device.Location = location
+			if device.Metadata == nil {
+				device.Metadata = make(map[string]string)
+			}
+			device.Metadata["location"] = location // store as display info only
 		}
 
 		devices = append(devices, device)
@@ -171,7 +174,6 @@ func (e *MetricsExtractor) tryExtractLinks(ctx context.Context, mapping MetricMa
 			CreatedAt: now,
 			UpdatedAt: now,
 			Weight:    1.0,
-			Status:    "up",
 			Metadata:  make(map[string]string),
 		}
 
@@ -288,9 +290,8 @@ func (e *MetricsExtractor) hasRequiredFields(device topology.Device, required []
 				return false
 			}
 		case "location":
-			if device.Location == "" {
-				return false
-			}
+			// location field not supported as system requirement in new schema
+			return false
 		}
 	}
 	return true
@@ -328,17 +329,12 @@ func (e *MetricsExtractor) fillMissingDeviceFields(device topology.Device) topol
 	if device.Hardware == "" {
 		device.Hardware = "unknown"
 	}
-	if device.Location == "" {
-		device.Location = "unknown"
-	}
-	if device.Status == "" {
-		device.Status = "up"
-	}
-	if device.Type == "" {
-		device.Type = "unknown"
-	}
 	if device.Metadata == nil {
 		device.Metadata = make(map[string]string)
+	}
+	// location is stored in metadata for display only, no default value needed
+	if device.Type == "" {
+		device.Type = "unknown"
 	}
 
 	return device
@@ -352,9 +348,7 @@ func (e *MetricsExtractor) fillMissingLinkFields(link topology.Link) topology.Li
 	if link.TargetPort == "" {
 		link.TargetPort = "unknown"
 	}
-	if link.Status == "" {
-		link.Status = "up"
-	}
+	// status field removed from Link
 	if link.Weight == 0 {
 		link.Weight = 1.0
 	}

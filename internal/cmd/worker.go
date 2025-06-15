@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/servak/topology-manager/internal/config"
+	"github.com/servak/topology-manager/internal/domain/classification"
 	"github.com/servak/topology-manager/internal/prometheus"
 	"github.com/servak/topology-manager/internal/repository"
+	"github.com/servak/topology-manager/internal/repository/postgres"
 	"github.com/servak/topology-manager/internal/worker"
 	"github.com/spf13/cobra"
 )
@@ -27,6 +29,7 @@ var (
 	enableLLDPSync     bool
 	enableDeviceSync   bool
 	enableCleanup      bool
+	enableAutoClassify bool
 	maxDeviceAge       int
 	maxLinkAge         int
 	prometheusTimeout  int
@@ -57,6 +60,7 @@ func init() {
 	workerCmd.Flags().BoolVar(&enableLLDPSync, "enable-lldp", true, "Enable LLDP topology synchronization")
 	workerCmd.Flags().BoolVar(&enableDeviceSync, "enable-device", true, "Enable device info synchronization")
 	workerCmd.Flags().BoolVar(&enableCleanup, "enable-cleanup", true, "Enable old data cleanup")
+	workerCmd.Flags().BoolVar(&enableAutoClassify, "enable-auto-classify", true, "Enable automatic device classification")
 
 	// Add to root command
 	rootCmd.AddCommand(workerCmd)
@@ -84,6 +88,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		EnableLLDPSync:     enableLLDPSync,
 		EnableDeviceSync:   enableDeviceSync,
 		EnableCleanup:      enableCleanup,
+		EnableAutoClassify: enableAutoClassify,
 		MaxDeviceAge:       time.Duration(maxDeviceAge) * time.Second,
 		MaxLinkAge:         time.Duration(maxLinkAge) * time.Second,
 		BatchSize:          batchSize,
@@ -124,8 +129,20 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Create classification repository if auto-classification is enabled
+	var classificationRepo classification.Repository
+	if enableAutoClassify {
+		// PostgreSQL specific implementation
+		pgRepo, ok := repo.(*postgres.PostgresRepository)
+		if !ok {
+			return fmt.Errorf("auto-classification requires PostgreSQL, got %T", repo)
+		}
+		classificationRepo = postgres.NewClassificationRepository(pgRepo.GetDB())
+		logger.Println("Auto-classification enabled")
+	}
+
 	// Create and start worker
-	worker := worker.NewPrometheusSync(promClient, appConfig.GetMetricsConfig(), repo, workerConfig, logger)
+	worker := worker.NewPrometheusSync(promClient, appConfig.GetMetricsConfig(), repo, classificationRepo, workerConfig, logger)
 
 	if err := worker.Start(); err != nil {
 		return fmt.Errorf("failed to start worker: %w", err)
@@ -190,6 +207,7 @@ func logWorkerConfig(logger *log.Logger, config worker.PrometheusSyncConfig) {
 	logger.Printf("  LLDP Sync Interval: %s (enabled: %t)", config.LLDPSyncInterval, config.EnableLLDPSync)
 	logger.Printf("  Device Sync Interval: %s (enabled: %t)", config.DeviceSyncInterval, config.EnableDeviceSync)
 	logger.Printf("  Cleanup Interval: %s (enabled: %t)", config.CleanupInterval, config.EnableCleanup)
+	logger.Printf("  Auto-Classification: enabled: %t", config.EnableAutoClassify)
 	logger.Printf("  Batch Size: %d", config.BatchSize)
 	logger.Printf("  Sync Timeout: %s", config.SyncTimeout)
 	logger.Printf("  Max Device Age: %s", config.MaxDeviceAge)

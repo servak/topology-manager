@@ -6,19 +6,22 @@ import (
 	"log"
 	"time"
 
+	"github.com/servak/topology-manager/internal/domain/classification"
 	"github.com/servak/topology-manager/internal/domain/topology"
 	"github.com/servak/topology-manager/internal/prometheus"
+	"github.com/servak/topology-manager/internal/service"
 )
 
 // PrometheusSync handles synchronization of topology data from Prometheus
 type PrometheusSync struct {
-	promClient       *prometheus.Client
-	metricsExtractor *prometheus.MetricsExtractor
-	lldpParser       *prometheus.LLDPParser
-	repository       topology.Repository
-	scheduler        *Scheduler
-	logger           *log.Logger
-	config           PrometheusSyncConfig
+	promClient            *prometheus.Client
+	metricsExtractor      *prometheus.MetricsExtractor
+	lldpParser            *prometheus.LLDPParser
+	repository            topology.Repository
+	classificationService *service.ClassificationService
+	scheduler             *Scheduler
+	logger                *log.Logger
+	config                PrometheusSyncConfig
 }
 
 // PrometheusSyncConfig holds configuration for Prometheus synchronization
@@ -32,6 +35,7 @@ type PrometheusSyncConfig struct {
 	EnableLLDPSync        bool `yaml:"enable_lldp_sync"`
 	EnableDeviceSync      bool `yaml:"enable_device_sync"`
 	EnableCleanup         bool `yaml:"enable_cleanup"`
+	EnableAutoClassify    bool `yaml:"enable_auto_classify"`
 	
 	// Data management
 	MaxDeviceAge          time.Duration `yaml:"max_device_age"`
@@ -51,6 +55,7 @@ func DefaultPrometheusSyncConfig() PrometheusSyncConfig {
 		EnableLLDPSync:     true,
 		EnableDeviceSync:   true,
 		EnableCleanup:      true,
+		EnableAutoClassify: true,
 		MaxDeviceAge:       24 * time.Hour,
 		MaxLinkAge:         12 * time.Hour,
 		BatchSize:          100,
@@ -63,6 +68,7 @@ func NewPrometheusSync(
 	promClient *prometheus.Client,
 	metricsConfig *prometheus.MetricsConfig,
 	repository topology.Repository,
+	classificationRepo classification.Repository,
 	config PrometheusSyncConfig,
 	logger *log.Logger,
 ) *PrometheusSync {
@@ -73,15 +79,17 @@ func NewPrometheusSync(
 	metricsExtractor := prometheus.NewMetricsExtractor(promClient, metricsConfig)
 	lldpParser := prometheus.NewLLDPParser(promClient)
 	scheduler := NewScheduler(logger)
+	classificationService := service.NewClassificationService(classificationRepo, repository)
 
 	return &PrometheusSync{
-		promClient:       promClient,
-		metricsExtractor: metricsExtractor,
-		lldpParser:       lldpParser,
-		repository:       repository,
-		scheduler:        scheduler,
-		logger:           logger,
-		config:           config,
+		promClient:            promClient,
+		metricsExtractor:      metricsExtractor,
+		lldpParser:            lldpParser,
+		repository:            repository,
+		classificationService: classificationService,
+		scheduler:             scheduler,
+		logger:                logger,
+		config:                config,
 	}
 }
 
@@ -252,6 +260,17 @@ func (ps *PrometheusSync) syncDeviceInfo(ctx context.Context) error {
 		return fmt.Errorf("failed to add/update devices: %w", err)
 	}
 
+	// Step 3: Apply auto-classification to newly added devices
+	if ps.config.EnableAutoClassify {
+		ps.logger.Println("Phase 3: Applying auto-classification to devices...")
+		if err := ps.applyAutoClassification(ctx, devices); err != nil {
+			ps.logger.Printf("Auto-classification failed: %v", err)
+			// Don't return error - this is not critical for data sync
+		} else {
+			ps.logger.Println("Phase 3: Auto-classification completed successfully")
+		}
+	}
+
 	ps.logger.Printf("Device information synchronization completed, processed %d devices", len(devices))
 	return nil
 }
@@ -354,10 +373,7 @@ func (ps *PrometheusSync) ensureReferencedDevicesExist(ctx context.Context, link
 				ID:        deviceID,
 				Type:      "unknown",
 				Hardware:  "unknown", 
-				Instance:  "unknown",
-				Location:  "unknown",
-				Status:    "unknown",
-				Layer:     99,
+				LayerID:   nil, // will be set by classification
 				Metadata:  make(map[string]string),
 				LastSeen:  now,
 				CreatedAt: now,
@@ -375,7 +391,46 @@ func (ps *PrometheusSync) ensureReferencedDevicesExist(ctx context.Context, link
 		if err := ps.batchAddDevices(ctx, missingDevices); err != nil {
 			return fmt.Errorf("failed to create placeholder devices: %w", err)
 		}
+
+		// Apply auto-classification to placeholder devices as well
+		if ps.config.EnableAutoClassify {
+			ps.logger.Printf("Applying auto-classification to %d placeholder devices...", len(missingDevices))
+			if err := ps.applyAutoClassification(ctx, missingDevices); err != nil {
+				ps.logger.Printf("Auto-classification for placeholder devices failed: %v", err)
+			}
+		}
+
 		ps.logger.Printf("Successfully created %d placeholder devices for LLDP-discovered neighbors", len(missingDevices))
+	}
+
+	return nil
+}
+
+// applyAutoClassification applies classification rules to devices
+func (ps *PrometheusSync) applyAutoClassification(ctx context.Context, devices []topology.Device) error {
+	if ps.classificationService == nil {
+		return fmt.Errorf("classification service not available")
+	}
+
+	// Extract device IDs
+	deviceIDs := make([]string, len(devices))
+	for i, device := range devices {
+		deviceIDs[i] = device.ID
+	}
+
+	// Apply classification rules to all devices
+	classifications, err := ps.classificationService.ApplyClassificationRules(ctx, deviceIDs)
+	if err != nil {
+		return fmt.Errorf("failed to apply classification rules: %w", err)
+	}
+
+	if len(classifications) > 0 {
+		ps.logger.Printf("Successfully auto-classified %d devices:", len(classifications))
+		for _, c := range classifications {
+			ps.logger.Printf("  - %s → Layer %d (%s)", c.DeviceID, c.Layer, c.DeviceType)
+		}
+	} else {
+		ps.logger.Printf("No devices matched existing classification rules")
 	}
 
 	return nil

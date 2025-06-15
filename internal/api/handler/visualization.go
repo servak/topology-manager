@@ -24,16 +24,25 @@ func (h *VisualizationHandler) Register(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-topology",
 		Method:      http.MethodGet,
-		Path:        "/api/topology/{deviceId}",
+		Path:        "/api/v1/topology/{deviceId}",
 		Summary:     "Get visual topology",
 		Tags:        []string{"visualization"},
 	}, h.GetTopology)
+
+	// 階層表示用API - フロントエンドが期待するパス
+	huma.Register(api, huma.Operation{
+		OperationID: "get-visual-topology",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/topology/visual/{deviceId}",
+		Summary:     "Get hierarchical visual topology",
+		Tags:        []string{"visualization"},
+	}, h.GetVisualTopology)
 
 	// グループ展開用API（新しいシンプル設計）
 	huma.Register(api, huma.Operation{
 		OperationID: "expand-from-device",
 		Method:      http.MethodGet,
-		Path:        "/api/topology/{deviceId}/expand",
+		Path:        "/api/v1/topology/{deviceId}/expand",
 		Summary:     "Get topology expanding from specific device",
 		Tags:        []string{"visualization"},
 	}, h.ExpandFromDevice)
@@ -61,6 +70,26 @@ func (h *VisualizationHandler) GetTopology(ctx context.Context, input *struct {
 	}
 
 	visualTopology, err := h.visualizationService.GetVisualTopologyWithGrouping(ctx, input.DeviceID, input.Depth, groupingOpts)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Failed to get visual topology", err)
+	}
+
+	return &struct {
+		Body visualization.VisualTopology
+	}{
+		Body: *visualTopology,
+	}, nil
+}
+
+// GetVisualTopology returns topology data optimized for hierarchical display
+func (h *VisualizationHandler) GetVisualTopology(ctx context.Context, input *struct {
+	DeviceID string `path:"deviceId"`
+	Depth    int    `query:"depth" default:"3"`
+}) (*struct {
+	Body visualization.VisualTopology
+}, error) {
+	// シンプルなビジュアルトポロジー取得（グループ化なし）
+	visualTopology, err := h.visualizationService.GetSimpleVisualTopology(ctx, input.DeviceID, input.Depth)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("Failed to get visual topology", err)
 	}

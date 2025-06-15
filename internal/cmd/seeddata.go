@@ -10,12 +10,14 @@ import (
 	"github.com/servak/topology-manager/internal/domain/topology"
 	"github.com/servak/topology-manager/internal/repository"
 	"github.com/servak/topology-manager/internal/repository/postgres"
+	"github.com/servak/topology-manager/internal/service"
 	"github.com/spf13/cobra"
 )
 
 var (
-	deviceCount int
-	clearFirst  bool
+	deviceCount          int
+	clearFirst           bool
+	enableAutoClassifySeed bool
 )
 
 var seedDataCmd = &cobra.Command{
@@ -28,6 +30,7 @@ var seedDataCmd = &cobra.Command{
 func init() {
 	seedDataCmd.Flags().IntVarP(&deviceCount, "count", "n", 10, "Number of devices to generate")
 	seedDataCmd.Flags().BoolVarP(&clearFirst, "clear", "", false, "Clear existing data before seeding")
+	seedDataCmd.Flags().BoolVar(&enableAutoClassifySeed, "enable-auto-classify", true, "Enable automatic device classification for seed data")
 }
 
 func runSeedData(cmd *cobra.Command, args []string) {
@@ -73,6 +76,42 @@ func runSeedData(cmd *cobra.Command, args []string) {
 	}
 	log.Printf("Added %d links", len(links))
 
+	// 自動分類の実行
+	if enableAutoClassifySeed {
+		log.Println("Applying auto-classification to seed devices...")
+		
+		// PostgreSQL specific implementation for classification repository
+		pgRepo, ok := repo.(*postgres.PostgresRepository)
+		if !ok {
+			log.Printf("Warning: Auto-classification requires PostgreSQL, got %T. Skipping classification.", repo)
+		} else {
+			classificationRepo := postgres.NewClassificationRepository(pgRepo.GetDB())
+			classificationService := service.NewClassificationService(classificationRepo, repo)
+			
+			// Extract device IDs
+			deviceIDs := make([]string, len(devices))
+			for i, device := range devices {
+				deviceIDs[i] = device.ID
+			}
+			
+			// Apply classification rules
+			classifications, err := classificationService.ApplyClassificationRules(ctx, deviceIDs)
+			if err != nil {
+				log.Printf("Auto-classification failed: %v", err)
+			} else {
+				if len(classifications) > 0 {
+					log.Printf("Successfully auto-classified %d devices:", len(classifications))
+					for _, c := range classifications {
+						log.Printf("  - %s → Layer %d (%s)", c.DeviceID, c.Layer, c.DeviceType)
+					}
+				} else {
+					log.Printf("No devices matched existing classification rules (this is normal for initial setup)")
+					log.Printf("You can create classification rules in the web interface and then re-run with auto-classification")
+				}
+			}
+		}
+	}
+
 	log.Println("Sample data generation completed successfully")
 }
 
@@ -99,56 +138,60 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 	devices := make([]topology.Device, 0, count)
 	links := make([]topology.Link, 0, count*2)
 
-	// コア・ディストリビューション・アクセス階層のサンプルデータ
+	// 実際のデータセンター階層に合わせたサンプルデータ
+	// デフォルト分類ルールとマッチするように命名規則を調整
 	deviceTypes := []struct {
 		prefix   string
 		typeName string
 		layer    int
 		hardware string
 	}{
-		{"core", "core", 1, "Arista 7280R"},
-		{"dist", "distribution", 2, "Arista 7050X"},
-		{"access", "access", 3, "Arista 7048T"},
-		{"server", "server", 4, "Dell PowerEdge"},
+		// Border Layer
+		{"border", "unknown", 99, "Cisco ASR 9000"},
+		{"edge", "unknown", 99, "Arista 7280R"},
+		// Spine Layer  
+		{"spine", "unknown", 99, "Arista 7280R"},
+		{"core", "unknown", 99, "Nexus 9000"},
+		// Leaf Layer
+		{"leaf", "unknown", 99, "Arista 7320X"},
+		{"tor", "unknown", 99, "Nexus 9300"},
+		// Servers
+		{"server", "unknown", 99, "Dell PowerEdge"},
+		{"srv", "unknown", 99, "HP ProLiant"},
+		// Storage
+		{"storage", "unknown", 99, "NetApp FAS"},
+		{"san", "unknown", 99, "Pure Storage"},
 	}
 
 	deviceIndex := 0
 	linkIndex := 0
 
-	// 各階層のデバイスを生成
+	// 各タイプのデバイスを均等に生成
 	for _, deviceType := range deviceTypes {
-		var deviceCountForType int
-		switch deviceType.layer {
-		case 1: // core
-			deviceCountForType = max(1, count/10)
-		case 2: // distribution
-			deviceCountForType = max(2, count/5)
-		case 3: // access
-			deviceCountForType = max(3, count/2)
-		case 4: // server
-			deviceCountForType = count - deviceIndex
+		devicesPerType := count / len(deviceTypes)
+		if devicesPerType == 0 {
+			devicesPerType = 1
 		}
 
 		if deviceIndex >= count {
 			break
 		}
 
-		for i := 0; i < deviceCountForType && deviceIndex < count; i++ {
+		for i := 0; i < devicesPerType && deviceIndex < count; i++ {
 			deviceID := fmt.Sprintf("%s-%03d", deviceType.prefix, i+1)
 
 			device := topology.Device{
-				ID:       deviceID,
-				Type:     deviceType.typeName,
-				Hardware: deviceType.hardware,
-				Instance: fmt.Sprintf("dc1.%s", deviceType.prefix),
-				Location: fmt.Sprintf("Rack-%d", (i/10)+1),
-				Status:   "up",
-				// Layer:     deviceType.layer,
-				Layer: 99,
+				ID:           deviceID,
+				Type:         deviceType.typeName,
+				Hardware:     deviceType.hardware,
+				LayerID:      nil, // will be set by classification
+				DeviceType:   "", // will be set by classification
+				ClassifiedBy: "", // empty string will be handled as NULL in database
 				Metadata: map[string]string{
 					"datacenter": "dc1",
 					"rack":       fmt.Sprintf("rack-%d", (i/10)+1),
 					"role":       deviceType.typeName,
+					"generated":  "seed",
 				},
 				LastSeen:  now,
 				CreatedAt: now,
@@ -190,7 +233,6 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				SourcePort: fmt.Sprintf("Ethernet%d", corePortNum),
 				TargetPort: "Ethernet49",
 				Weight:     1.0,
-				Status:     "up",
 				Metadata: map[string]string{
 					"link_type":  "core-distribution",
 					"speed":      "100G",
@@ -218,7 +260,6 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				SourcePort: fmt.Sprintf("Ethernet%d", corePortNum),
 				TargetPort: "Ethernet50",
 				Weight:     1.0,
-				Status:     "up",
 				Metadata: map[string]string{
 					"link_type":  "core-distribution",
 					"speed":      "100G",
@@ -258,7 +299,6 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				SourcePort: fmt.Sprintf("Ethernet%d", distPortNum),
 				TargetPort: "Ethernet49",
 				Weight:     2.0,
-				Status:     "up",
 				Metadata: map[string]string{
 					"link_type":  "distribution-access",
 					"speed":      "10G",
@@ -286,7 +326,6 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				SourcePort: fmt.Sprintf("Ethernet%d", distPortNum),
 				TargetPort: "Ethernet50",
 				Weight:     2.0,
-				Status:     "up",
 				Metadata: map[string]string{
 					"link_type":  "distribution-access",
 					"speed":      "10G",
@@ -324,7 +363,6 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				SourcePort: fmt.Sprintf("Ethernet%d", accessPortNum),
 				TargetPort: "eth0",
 				Weight:     3.0,
-				Status:     "up",
 				Metadata: map[string]string{
 					"link_type": "access-server",
 					"speed":     "1G",
@@ -349,7 +387,6 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				SourcePort: "Ethernet50",
 				TargetPort: "Ethernet50",
 				Weight:     1.0,
-				Status:     "up",
 				Metadata: map[string]string{
 					"link_type": "core-core",
 					"speed":     "100G",
@@ -370,7 +407,7 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 func filterDevicesByLayer(devices []topology.Device, layer int) []topology.Device {
 	var filtered []topology.Device
 	for _, device := range devices {
-		if device.Layer == layer {
+		if device.LayerID != nil && *device.LayerID == layer {
 			filtered = append(filtered, device)
 		}
 	}

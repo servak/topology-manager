@@ -24,7 +24,7 @@ func (h *TopologyHandler) Register(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "search-devices",
 		Method:      http.MethodGet,
-		Path:        "/api/devices/search",
+		Path:        "/api/v1/devices/search",
 		Summary:     "Search devices by ID, name, or IP address",
 		Tags:        []string{"devices"},
 	}, h.SearchDevices)
@@ -33,7 +33,7 @@ func (h *TopologyHandler) Register(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "find-reachable-devices",
 		Method:      http.MethodGet,
-		Path:        "/api/devices/{deviceId}/reachable",
+		Path:        "/api/v1/devices/{deviceId}/reachable",
 		Summary:     "Find reachable devices using BFS/DFS",
 		Tags:        []string{"topology-search"},
 	}, h.FindReachableDevices)
@@ -41,7 +41,7 @@ func (h *TopologyHandler) Register(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "find-shortest-path",
 		Method:      http.MethodGet,
-		Path:        "/api/path/{fromId}/{toId}",
+		Path:        "/api/v1/path/{fromId}/{toId}",
 		Summary:     "Find shortest path between two devices",
 		Tags:        []string{"topology-search"},
 	}, h.FindShortestPath)

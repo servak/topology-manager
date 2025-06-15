@@ -5,17 +5,16 @@ import (
 )
 
 type Device struct {
-	ID        string            `json:"id" db:"id"`
-	Type      string            `json:"type" db:"type"`
-	Hardware  string            `json:"hardware" db:"hardware"`
-	Instance  string            `json:"instance" db:"instance"`
-	Location  string            `json:"location" db:"location"`
-	Status    string            `json:"status" db:"status"`
-	Layer     int               `json:"layer" db:"layer"`
-	Metadata  map[string]string `json:"metadata" db:"metadata"`
-	LastSeen  time.Time         `json:"last_seen" db:"last_seen"`
-	CreatedAt time.Time         `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time         `json:"updated_at" db:"updated_at"`
+	ID           string            `json:"id" db:"id"`
+	Type         string            `json:"type" db:"type"`
+	Hardware     string            `json:"hardware" db:"hardware"`
+	LayerID      *int              `json:"layer_id" db:"layer_id"`        // NULL許可
+	DeviceType   string            `json:"device_type" db:"device_type"`
+	ClassifiedBy string            `json:"classified_by" db:"classified_by"`
+	Metadata     map[string]string `json:"metadata" db:"metadata"`
+	LastSeen     time.Time         `json:"last_seen" db:"last_seen"`
+	CreatedAt    time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at" db:"updated_at"`
 }
 
 type Link struct {
@@ -25,7 +24,6 @@ type Link struct {
 	SourcePort string            `json:"source_port" db:"source_port"`
 	TargetPort string            `json:"target_port" db:"target_port"`
 	Weight     float64           `json:"weight" db:"weight"`
-	Status     string            `json:"status" db:"status"`
 	Metadata   map[string]string `json:"metadata" db:"metadata"`
 	LastSeen   time.Time         `json:"last_seen" db:"last_seen"`
 	CreatedAt  time.Time         `json:"created_at" db:"created_at"`
@@ -73,7 +71,6 @@ type PaginationOptions struct {
 	SortDir  string `json:"sort_dir"`
 	Type     string `json:"type,omitempty"`
 	Hardware string `json:"hardware,omitempty"`
-	Instance string `json:"instance,omitempty"`
 }
 
 type PaginationResult struct {

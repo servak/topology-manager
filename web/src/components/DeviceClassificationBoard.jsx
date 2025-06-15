@@ -1,19 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import './DeviceClassificationBoard.css'
 
-const HIERARCHY_LAYERS = [
-  { id: 0, name: 'Internet Gateway', color: '#e74c3c', description: 'External internet connection point' },
-  { id: 1, name: 'Firewall', color: '#e67e22', description: 'Security appliances' },
-  { id: 2, name: 'Core Router', color: '#f39c12', description: 'Core network routing' },
-  { id: 3, name: 'Distribution', color: '#3498db', description: 'Distribution layer switches' },
-  { id: 4, name: 'Access', color: '#2ecc71', description: 'Access layer switches' },
-  { id: 5, name: 'Server', color: '#95a5a6', description: 'End devices and servers' }
-]
+// Note: Hierarchy layers are now loaded from the API instead of using defaults
 
 function DeviceClassificationBoard() {
   const [unclassifiedDevices, setUnclassifiedDevices] = useState([])
   const [classifiedDevices, setClassifiedDevices] = useState({}) // { layerId: [devices] }
-  const [hierarchyLayers, setHierarchyLayers] = useState(HIERARCHY_LAYERS)
+  const [hierarchyLayers, setHierarchyLayers] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [draggedDevice, setDraggedDevice] = useState(null)
@@ -39,10 +32,11 @@ function DeviceClassificationBoard() {
   const loadData = async () => {
     setLoading(true)
     try {
+      // Load hierarchy layers first, then classified devices
+      await loadHierarchyLayers()
       await Promise.all([
         loadUnclassifiedDevices(),
         loadClassifiedDevices(),
-        loadHierarchyLayers(),
         loadClassificationRules()
       ])
     } catch (err) {
@@ -100,28 +94,22 @@ function DeviceClassificationBoard() {
       
       // Group devices by layer
       const grouped = {}
-      hierarchyLayers.forEach(layer => {
-        grouped[layer.id] = []
-      })
       
+      // Initialize all layer groups (will be properly populated after hierarchyLayers are loaded)
       data.classifications?.forEach(classification => {
-        if (grouped[classification.layer]) {
-          grouped[classification.layer].push({
-            ...classification,
-            device_id: classification.device_id
-          })
+        if (!grouped[classification.layer]) {
+          grouped[classification.layer] = []
         }
+        grouped[classification.layer].push({
+          ...classification,
+          device_id: classification.device_id
+        })
       })
       
       setClassifiedDevices(grouped)
     } catch (err) {
       console.error('Failed to load classified devices:', err)
-      // Initialize empty groups
-      const grouped = {}
-      hierarchyLayers.forEach(layer => {
-        grouped[layer.id] = []
-      })
-      setClassifiedDevices(grouped)
+      setClassifiedDevices({})
     }
   }
 
@@ -130,10 +118,10 @@ function DeviceClassificationBoard() {
       const response = await fetch('/api/v1/classification/layers')
       if (!response.ok) throw new Error('Failed to load hierarchy layers')
       const data = await response.json()
-      setHierarchyLayers(data.layers || HIERARCHY_LAYERS)
+      setHierarchyLayers(data.layers || [])
     } catch (err) {
-      console.warn('Using default layers:', err.message)
-      setHierarchyLayers(HIERARCHY_LAYERS)
+      console.error('Failed to load hierarchy layers:', err)
+      setHierarchyLayers([])
     }
   }
 
@@ -192,10 +180,12 @@ function DeviceClassificationBoard() {
   }
 
   const handleCreateLayer = () => {
+    // Find the next available order number
+    const maxOrder = hierarchyLayers.length > 0 ? Math.max(...hierarchyLayers.map(l => l.order)) : 0
     setEditingLayer({
       name: '',
       description: '',
-      order: hierarchyLayers.length,
+      order: maxOrder + 1,
       color: '#3498db'
     })
   }

@@ -10,6 +10,9 @@ type Repository interface {
 
 	// デバイス検索（フロントエンド検索機能使用中）
 	SearchDevices(ctx context.Context, query string, limit int) ([]Device, error)
+	
+	// デバイス一覧取得（分類サービス使用中）
+	GetDevices(ctx context.Context, opts PaginationOptions) ([]Device, *PaginationResult, error)
 
 	// 更新操作（Worker使用中）
 	UpdateDevice(ctx context.Context, device Device) error

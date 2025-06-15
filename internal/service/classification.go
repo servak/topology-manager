@@ -35,81 +35,194 @@ func (s *ClassificationService) ClassifyDevice(ctx context.Context, deviceID str
 		return fmt.Errorf("device not found: %s", deviceID)
 	}
 
-	classification := classification.DeviceClassification{
-		ID:         uuid.New().String(),
-		DeviceID:   deviceID,
-		Layer:      layer,
-		DeviceType: deviceType,
-		IsManual:   true,
-		CreatedBy:  userID,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-	}
+	// Update device with classification information in new schema
+	device.LayerID = &layer
+	device.DeviceType = deviceType
+	device.ClassifiedBy = fmt.Sprintf("user:%s", userID) // user:username format
 
-	return s.classificationRepo.SaveDeviceClassification(ctx, classification)
+	// Update the device in the topology repository
+	return s.topologyRepo.UpdateDevice(ctx, *device)
 }
 
 // GetDeviceClassification retrieves classification for a specific device
 func (s *ClassificationService) GetDeviceClassification(ctx context.Context, deviceID string) (*classification.DeviceClassification, error) {
-	return s.classificationRepo.GetDeviceClassification(ctx, deviceID)
+	// Get device from topology repository
+	device, err := s.topologyRepo.GetDevice(ctx, deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get device: %w", err)
+	}
+	if device == nil {
+		return nil, nil // Device not found
+	}
+
+	// If device is not classified, return nil
+	if device.LayerID == nil && device.DeviceType == "" && device.ClassifiedBy == "" {
+		return nil, nil
+	}
+
+	// Construct DeviceClassification from device data
+	layer := 0
+	if device.LayerID != nil {
+		layer = *device.LayerID
+	}
+
+	isManual := false
+	createdBy := ""
+	if strings.HasPrefix(device.ClassifiedBy, "user:") {
+		isManual = true
+		createdBy = strings.TrimPrefix(device.ClassifiedBy, "user:")
+	}
+
+	return &classification.DeviceClassification{
+		ID:         device.ID, // Use device ID as classification ID
+		DeviceID:   device.ID,
+		Layer:      layer,
+		DeviceType: device.DeviceType,
+		IsManual:   isManual,
+		CreatedBy:  createdBy,
+		CreatedAt:  device.CreatedAt,
+		UpdatedAt:  device.UpdatedAt,
+	}, nil
 }
 
-// ListDeviceClassifications retrieves all device classifications
+// ListDeviceClassifications retrieves all device classifications from the new schema
 func (s *ClassificationService) ListDeviceClassifications(ctx context.Context) ([]classification.DeviceClassification, error) {
-	return s.classificationRepo.ListDeviceClassifications(ctx)
+	// Get all devices with classification information
+	paginationOpts := topology.PaginationOptions{
+		Page:     1,
+		PageSize: 10000, // 大きめに取得
+		OrderBy:  "id",
+		SortDir:  "ASC",
+	}
+
+	allDevices, _, err := s.topologyRepo.GetDevices(ctx, paginationOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get devices: %w", err)
+	}
+
+	var classifications []classification.DeviceClassification
+	for _, device := range allDevices {
+		// Only include classified devices
+		if device.LayerID != nil || device.DeviceType != "" || device.ClassifiedBy != "" {
+			layer := 0
+			if device.LayerID != nil {
+				layer = *device.LayerID
+			}
+
+			isManual := false
+			createdBy := ""
+			if strings.HasPrefix(device.ClassifiedBy, "user:") {
+				isManual = true
+				createdBy = strings.TrimPrefix(device.ClassifiedBy, "user:")
+			} else if strings.HasPrefix(device.ClassifiedBy, "rule:") {
+				createdBy = "system"
+			}
+
+			classifications = append(classifications, classification.DeviceClassification{
+				ID:         device.ID,
+				DeviceID:   device.ID,
+				Layer:      layer,
+				DeviceType: device.DeviceType,
+				IsManual:   isManual,
+				CreatedBy:  createdBy,
+				CreatedAt:  device.CreatedAt,
+				UpdatedAt:  device.UpdatedAt,
+			})
+		}
+	}
+
+	return classifications, nil
 }
 
 // DeleteDeviceClassification removes classification for a specific device
 func (s *ClassificationService) DeleteDeviceClassification(ctx context.Context, deviceID string) error {
-	return s.classificationRepo.DeleteDeviceClassification(ctx, deviceID)
+	// Get device from topology repository
+	device, err := s.topologyRepo.GetDevice(ctx, deviceID)
+	if err != nil {
+		return fmt.Errorf("failed to get device: %w", err)
+	}
+	if device == nil {
+		return fmt.Errorf("device not found: %s", deviceID)
+	}
+
+	// Clear classification fields
+	device.LayerID = nil
+	device.DeviceType = ""
+	device.ClassifiedBy = ""
+
+	// Update the device in the topology repository
+	return s.topologyRepo.UpdateDevice(ctx, *device)
 }
 
 // ListUnclassifiedDevices returns devices that haven't been classified
 func (s *ClassificationService) ListUnclassifiedDevices(ctx context.Context) ([]topology.Device, error) {
-	unclassifiedIDs, err := s.classificationRepo.ListUnclassifiedDevices(ctx)
+	// Get all devices from topology repository
+	paginationOpts := topology.PaginationOptions{
+		Page:     1,
+		PageSize: 10000, // 大きめに取得
+		OrderBy:  "id",
+		SortDir:  "ASC",
+	}
+
+	allDevices, _, err := s.topologyRepo.GetDevices(ctx, paginationOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list unclassified device IDs: %w", err)
+		return nil, fmt.Errorf("failed to get devices: %w", err)
 	}
 
-	devices := make([]topology.Device, 0, len(unclassifiedIDs))
-	for _, deviceID := range unclassifiedIDs {
-		device, err := s.topologyRepo.GetDevice(ctx, deviceID)
-		if err != nil {
-			continue // Skip devices that can't be retrieved
-		}
-		if device != nil {
-			devices = append(devices, *device)
+	// Filter unclassified devices
+	var unclassifiedDevices []topology.Device
+	for _, device := range allDevices {
+		if s.isUnclassified(device) {
+			unclassifiedDevices = append(unclassifiedDevices, device)
 		}
 	}
 
-	return devices, nil
+	return unclassifiedDevices, nil
 }
 
 // ListUnclassifiedDevicesWithPagination returns devices that haven't been classified with pagination
 func (s *ClassificationService) ListUnclassifiedDevicesWithPagination(ctx context.Context, limit, offset int) ([]topology.Device, int, error) {
-	unclassifiedIDs, err := s.classificationRepo.ListUnclassifiedDevicesWithPagination(ctx, limit, offset)
+	// 新しいスキーマでは、layer_idがNULLまたはclassified_byがNULL/空のデバイスが未分類
+	// 簡易実装: topologyリポジトリから全デバイスを取得してフィルタリング
+	paginationOpts := topology.PaginationOptions{
+		Page:     1,
+		PageSize: 1000, // 大きめに取得してフィルタリング
+		OrderBy:  "id",
+		SortDir:  "ASC",
+	}
+
+	allDevices, _, err := s.topologyRepo.GetDevices(ctx, paginationOpts)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list unclassified device IDs: %w", err)
+		return nil, 0, fmt.Errorf("failed to get devices: %w", err)
 	}
 
-	// 総件数を取得
-	totalCount, err := s.classificationRepo.CountUnclassifiedDevices(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to count unclassified devices: %w", err)
-	}
-
-	devices := make([]topology.Device, 0, len(unclassifiedIDs))
-	for _, deviceID := range unclassifiedIDs {
-		device, err := s.topologyRepo.GetDevice(ctx, deviceID)
-		if err != nil {
-			continue // Skip devices that can't be retrieved
-		}
-		if device != nil {
-			devices = append(devices, *device)
+	// 未分類デバイスをフィルタリング
+	var unclassifiedDevices []topology.Device
+	for _, device := range allDevices {
+		if s.isUnclassified(device) {
+			unclassifiedDevices = append(unclassifiedDevices, device)
 		}
 	}
 
-	return devices, totalCount, nil
+	// ページネーション適用
+	totalCount := len(unclassifiedDevices)
+	start := offset
+	if start >= len(unclassifiedDevices) {
+		return []topology.Device{}, totalCount, nil
+	}
+
+	end := start + limit
+	if end > len(unclassifiedDevices) {
+		end = len(unclassifiedDevices)
+	}
+
+	return unclassifiedDevices[start:end], totalCount, nil
+}
+
+// isUnclassified checks if a device is unclassified in the new schema
+func (s *ClassificationService) isUnclassified(device topology.Device) bool {
+	// layer_idがNULLまたはclassified_byがNULL/空の場合は未分類
+	return device.LayerID == nil || device.ClassifiedBy == ""
 }
 
 // ApplyClassificationRules applies all active rules to classify devices
@@ -122,33 +235,38 @@ func (s *ClassificationService) ApplyClassificationRules(ctx context.Context, de
 	var results []classification.DeviceClassification
 
 	for _, deviceID := range deviceIDs {
-		// Skip if device is already manually classified
-		existing, err := s.classificationRepo.GetDeviceClassification(ctx, deviceID)
-		if err == nil && existing != nil && existing.IsManual {
-			continue
-		}
-
 		// Get device details
 		device, err := s.topologyRepo.GetDevice(ctx, deviceID)
 		if err != nil || device == nil {
 			continue
 		}
 
+		// Skip if device is already manually classified (user: prefix)
+		if strings.HasPrefix(device.ClassifiedBy, "user:") {
+			continue
+		}
+
 		// Apply rules in priority order
 		for _, rule := range rules {
 			if s.deviceMatchesRule(*device, rule) {
-				classification := classification.DeviceClassification{
-					ID:         uuid.New().String(),
-					DeviceID:   deviceID,
-					Layer:      rule.Layer,
-					DeviceType: rule.DeviceType,
-					IsManual:   false,
-					CreatedBy:  "system",
-					CreatedAt:  time.Now(),
-					UpdatedAt:  time.Now(),
-				}
+				// Update device with classification information
+				device.LayerID = &rule.Layer
+				device.DeviceType = rule.DeviceType
+				device.ClassifiedBy = fmt.Sprintf("rule:%s", rule.Name)
 
-				if err := s.classificationRepo.SaveDeviceClassification(ctx, classification); err == nil {
+				// Update device in topology repository
+				if err := s.topologyRepo.UpdateDevice(ctx, *device); err == nil {
+					// Create result object for return
+					classification := classification.DeviceClassification{
+						ID:         device.ID,
+						DeviceID:   deviceID,
+						Layer:      rule.Layer,
+						DeviceType: rule.DeviceType,
+						IsManual:   false,
+						CreatedBy:  "system",
+						CreatedAt:  time.Now(),
+						UpdatedAt:  time.Now(),
+					}
 					results = append(results, classification)
 				}
 				break // Apply only the first matching rule
@@ -199,8 +317,6 @@ func (s *ClassificationService) deviceMatchesCondition(device topology.Device, c
 		fieldValue = device.ID // DeviceにNameがないため、IDを使用
 	case "hardware":
 		fieldValue = device.Hardware
-	case "ip_address":
-		fieldValue = device.Instance // IPAddressがないため、Instanceを使用
 	case "type":
 		fieldValue = device.Type
 	default:
@@ -261,21 +377,43 @@ func (s *ClassificationService) GenerateRuleSuggestions(ctx context.Context) ([]
 
 // getManualClassifications retrieves all manual device classifications with device details
 func (s *ClassificationService) getManualClassifications(ctx context.Context) ([]classificationWithDevice, error) {
-	classifications, err := s.classificationRepo.ListDeviceClassifications(ctx)
+	// Get all devices from topology repository
+	paginationOpts := topology.PaginationOptions{
+		Page:     1,
+		PageSize: 10000, // 大きめに取得
+		OrderBy:  "id",
+		SortDir:  "ASC",
+	}
+
+	allDevices, _, err := s.topologyRepo.GetDevices(ctx, paginationOpts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get devices: %w", err)
 	}
 
 	var result []classificationWithDevice
-	for _, c := range classifications {
-		if c.IsManual {
-			device, err := s.topologyRepo.GetDevice(ctx, c.DeviceID)
-			if err != nil || device == nil {
-				continue
+	for _, device := range allDevices {
+		// Only include devices with manual classification (user: prefix)
+		if strings.HasPrefix(device.ClassifiedBy, "user:") {
+			layer := 0
+			if device.LayerID != nil {
+				layer = *device.LayerID
 			}
+
+			createdBy := strings.TrimPrefix(device.ClassifiedBy, "user:")
+			classification := classification.DeviceClassification{
+				ID:         device.ID,
+				DeviceID:   device.ID,
+				Layer:      layer,
+				DeviceType: device.DeviceType,
+				IsManual:   true,
+				CreatedBy:  createdBy,
+				CreatedAt:  device.CreatedAt,
+				UpdatedAt:  device.UpdatedAt,
+			}
+
 			result = append(result, classificationWithDevice{
-				Classification: c,
-				Device:         *device,
+				Classification: classification,
+				Device:         device,
 			})
 		}
 	}
@@ -468,7 +606,7 @@ func (s *ClassificationService) findCommonPrefixes(names []string) []string {
 	}
 
 	prefixCount := make(map[string]int)
-	
+
 	for i := 0; i < len(names); i++ {
 		for j := i + 1; j < len(names); j++ {
 			prefix := s.longestCommonPrefix(names[i], names[j])
@@ -490,7 +628,7 @@ func (s *ClassificationService) findCommonPrefixes(names []string) []string {
 
 func (s *ClassificationService) findCommonKeywords(names []string) []string {
 	wordCount := make(map[string]int)
-	
+
 	for _, name := range names {
 		words := s.extractWords(name)
 		for _, word := range words {
@@ -527,7 +665,7 @@ func (s *ClassificationService) extractWords(name string) []string {
 	// Split by common delimiters
 	delimiters := []string{"-", "_", ".", " "}
 	words := []string{name}
-	
+
 	for _, delimiter := range delimiters {
 		var newWords []string
 		for _, word := range words {
@@ -657,7 +795,7 @@ func (s *ClassificationService) SaveHierarchyLayer(ctx context.Context, layer cl
 		if err != nil {
 			return fmt.Errorf("failed to list layers for ID generation: %w", err)
 		}
-		
+
 		maxID := -1
 		for _, l := range layers {
 			if l.ID > maxID {
@@ -666,7 +804,7 @@ func (s *ClassificationService) SaveHierarchyLayer(ctx context.Context, layer cl
 		}
 		layer.ID = maxID + 1
 	}
-	
+
 	return s.classificationRepo.SaveHierarchyLayer(ctx, layer)
 }
 
@@ -680,7 +818,7 @@ func (s *ClassificationService) UpdateHierarchyLayer(ctx context.Context, layer 
 	if existing == nil {
 		return fmt.Errorf("layer with ID %d not found", layer.ID)
 	}
-	
+
 	return s.classificationRepo.UpdateHierarchyLayer(ctx, layer)
 }
 
@@ -691,12 +829,12 @@ func (s *ClassificationService) DeleteHierarchyLayer(ctx context.Context, layerI
 	if err != nil {
 		return fmt.Errorf("failed to check layer usage: %w", err)
 	}
-	
+
 	for _, c := range classifications {
 		if c.Layer == layerID {
 			return fmt.Errorf("cannot delete layer %d: it is currently being used by device classifications", layerID)
 		}
 	}
-	
+
 	return s.classificationRepo.DeleteHierarchyLayer(ctx, layerID)
 }
