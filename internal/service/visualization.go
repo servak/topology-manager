@@ -49,21 +49,31 @@ func (s *VisualizationService) GetSimpleVisualTopology(ctx context.Context, root
 		return nil, fmt.Errorf("failed to extract sub-topology: %w", err)
 	}
 
+	// デバイスマップ作成（レイヤー情報の参照用）
+	deviceMap := make(map[string]topology.Device)
+	for _, device := range devices {
+		deviceMap[device.ID] = device
+	}
+
 	// シンプルなビジュアルノード作成（グループ化なし）
 	visualNodes := make([]visualization.VisualNode, 0, len(devices))
 	nodeMap := make(map[string]*visualization.VisualNode, len(devices))
 
 	for _, device := range devices {
+		// 接続分類を追加
+		connections := s.classifyConnections(ctx, device.ID, deviceMap, links)
+		
 		visualNode := visualization.VisualNode{
-			ID:       device.ID,
-			Name:     device.ID,
-			Type:     device.Type,
-			Hardware: device.Hardware,
-			Status:   "active", // default status since status field removed
-			Layer:    s.getDeviceLayer(device.LayerID),
-			IsRoot:   device.ID == rootDeviceID,
-			Position: visualization.Position{X: 0, Y: 0}, // レイアウト計算で後から設定
-			Style:    s.getNodeStyle(device.Type, "active", device.ID == rootDeviceID),
+			ID:          device.ID,
+			Name:        device.ID,
+			Type:        device.Type,
+			Hardware:    device.Hardware,
+			Status:      "active", // default status since status field removed
+			Layer:       s.getDeviceLayer(device.LayerID),
+			IsRoot:      device.ID == rootDeviceID,
+			Position:    visualization.Position{X: 0, Y: 0}, // レイアウト計算で後から設定
+			Style:       s.getNodeStyle(device.Type, "active", device.ID == rootDeviceID),
+			Connections: connections, // 新しい接続分類情報
 		}
 		visualNodes = append(visualNodes, visualNode)
 		nodeMap[device.ID] = &visualNode
@@ -74,15 +84,19 @@ func (s *VisualizationService) GetSimpleVisualTopology(ctx context.Context, root
 	for _, link := range links {
 		// 両方のノードが存在することを確認
 		if nodeMap[link.SourceID] != nil && nodeMap[link.TargetID] != nil {
+			// 接続タイプを決定
+			connectionType := s.determineConnectionType(link, deviceMap)
+			
 			visualEdge := visualization.VisualEdge{
-				ID:         link.ID,
-				Source:     link.SourceID,
-				Target:     link.TargetID,
-				LocalPort:  link.SourcePort,
-				RemotePort: link.TargetPort,
-				Status:     "active", // default status since status field removed
-				Weight:     link.Weight,
-				Style:      s.getEdgeStyle("active", link.Weight),
+				ID:             link.ID,
+				Source:         link.SourceID,
+				Target:         link.TargetID,
+				LocalPort:      link.SourcePort,
+				RemotePort:     link.TargetPort,
+				Status:         "active", // default status since status field removed
+				Weight:         link.Weight,
+				Style:          s.getEdgeStyle("active", link.Weight),
+				ConnectionType: connectionType, // 新しい接続タイプ情報
 			}
 			visualEdges = append(visualEdges, visualEdge)
 		}
@@ -263,7 +277,7 @@ func (s *VisualizationService) exploreTopology(ctx context.Context, rootDeviceID
 				// リンクを追加（重複チェック）
 				linkKey := fmt.Sprintf("%s-%s", link.SourceID, link.TargetID)
 				reverseLinkKey := fmt.Sprintf("%s-%s", link.TargetID, link.SourceID)
-				
+
 				if _, exists := linkMap[linkKey]; !exists {
 					if _, exists := linkMap[reverseLinkKey]; !exists {
 						linkMap[linkKey] = link
@@ -382,7 +396,7 @@ func (s *VisualizationService) getEdgeStyle(status string, weight float64) visua
 func (s *VisualizationService) calculateLayout(nodes []visualization.VisualNode, edges []visualization.VisualEdge, rootDeviceID string) visualization.Layout {
 	// 基本的な階層レイアウトを実装
 	positions := make(map[string]visualization.Position)
-	
+
 	// 階層ごとにノードを分類
 	layerNodes := make(map[int][]visualization.VisualNode)
 	for _, node := range nodes {
@@ -424,27 +438,27 @@ func (s *VisualizationService) calculateLayout(nodes []visualization.VisualNode,
 func (s *VisualizationService) calculateDeviceDepths(devices []topology.Device, links []topology.Link, rootDeviceID string) map[string]int {
 	depthMap := make(map[string]int)
 	visited := make(map[string]bool)
-	
+
 	// Build adjacency list
 	adjList := make(map[string][]string)
 	for _, link := range links {
 		adjList[link.SourceID] = append(adjList[link.SourceID], link.TargetID)
 		adjList[link.TargetID] = append(adjList[link.TargetID], link.SourceID)
 	}
-	
+
 	// BFS to calculate depths
 	queue := []struct {
 		deviceID string
 		depth    int
 	}{{rootDeviceID, 0}}
-	
+
 	depthMap[rootDeviceID] = 0
 	visited[rootDeviceID] = true
-	
+
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		
+
 		for _, neighborID := range adjList[current.deviceID] {
 			if !visited[neighborID] {
 				visited[neighborID] = true
@@ -456,18 +470,18 @@ func (s *VisualizationService) calculateDeviceDepths(devices []topology.Device, 
 			}
 		}
 	}
-	
+
 	return depthMap
 }
 
 // createGroups creates groups based on grouping options
 func (s *VisualizationService) createGroups(nodes []visualization.VisualNode, edges []visualization.VisualEdge, deviceDepthMap map[string]int, opts visualization.GroupingOptions) []visualization.GroupedVisualNode {
 	var groups []visualization.GroupedVisualNode
-	
+
 	if opts.MinGroupSize <= 1 {
 		opts.MinGroupSize = 3 // デフォルト最小グループサイズ
 	}
-	
+
 	// 深度によるフィルタリング
 	candidateNodes := make([]visualization.VisualNode, 0)
 	for _, node := range nodes {
@@ -475,11 +489,11 @@ func (s *VisualizationService) createGroups(nodes []visualization.VisualNode, ed
 			candidateNodes = append(candidateNodes, node)
 		}
 	}
-	
+
 	if len(candidateNodes) < opts.MinGroupSize {
 		return groups
 	}
-	
+
 	// プレフィックスによるグルーピング
 	if opts.GroupByPrefix {
 		deviceNames := make([]string, len(candidateNodes))
@@ -488,22 +502,22 @@ func (s *VisualizationService) createGroups(nodes []visualization.VisualNode, ed
 			deviceNames[i] = node.Name
 			deviceNodeMap[node.Name] = node
 		}
-		
+
 		prefixGroups := grouping.GroupByLongestCommonPrefix(deviceNames, opts.MinGroupSize)
 		for i, group := range prefixGroups {
 			if len(group.Prefix) >= opts.PrefixMinLen {
 				groupID := fmt.Sprintf("group-prefix-%d", i)
 				groupNode := visualization.GroupedVisualNode{
-					ID:        groupID,
-					Name:      fmt.Sprintf("%s* (%d)", group.Prefix, group.Count),
-					Type:      "group",
-					GroupType: "prefix",
-					Prefix:    group.Prefix,
-					Count:     group.Count,
-					DeviceIDs: group.DeviceIDs,
-					Depth:     opts.MaxDepth,
+					ID:         groupID,
+					Name:       fmt.Sprintf("%s* (%d)", group.Prefix, group.Count),
+					Type:       "group",
+					GroupType:  "prefix",
+					Prefix:     group.Prefix,
+					Count:      group.Count,
+					DeviceIDs:  group.DeviceIDs,
+					Depth:      opts.MaxDepth,
 					IsExpanded: false,
-					Position:  visualization.Position{X: 0, Y: 0},
+					Position:   visualization.Position{X: 0, Y: 0},
 					Style: visualization.GroupedNodeStyle{
 						Color:       "#95a5a6",
 						Shape:       "round-rectangle",
@@ -519,29 +533,29 @@ func (s *VisualizationService) createGroups(nodes []visualization.VisualNode, ed
 			}
 		}
 	}
-	
+
 	// タイプによるグルーピング
 	if opts.GroupByType {
 		deviceTypes := make(map[string]string)
 		for _, node := range candidateNodes {
 			deviceTypes[node.ID] = node.Type
 		}
-		
+
 		typeGroups := grouping.GroupByType(deviceTypes)
 		for i, group := range typeGroups {
 			if group.Count >= opts.MinGroupSize {
 				groupID := fmt.Sprintf("group-type-%d", i)
 				groupNode := visualization.GroupedVisualNode{
-					ID:        groupID,
-					Name:      fmt.Sprintf("%s (%d)", group.Prefix, group.Count),
-					Type:      "group",
-					GroupType: "type",
-					Prefix:    group.Prefix,
-					Count:     group.Count,
-					DeviceIDs: group.DeviceIDs,
-					Depth:     opts.MaxDepth,
+					ID:         groupID,
+					Name:       fmt.Sprintf("%s (%d)", group.Prefix, group.Count),
+					Type:       "group",
+					GroupType:  "type",
+					Prefix:     group.Prefix,
+					Count:      group.Count,
+					DeviceIDs:  group.DeviceIDs,
+					Depth:      opts.MaxDepth,
 					IsExpanded: false,
-					Position:  visualization.Position{X: 0, Y: 0},
+					Position:   visualization.Position{X: 0, Y: 0},
 					Style: visualization.GroupedNodeStyle{
 						Color:       "#3498db",
 						Shape:       "round-rectangle",
@@ -557,7 +571,7 @@ func (s *VisualizationService) createGroups(nodes []visualization.VisualNode, ed
 			}
 		}
 	}
-	
+
 	return groups
 }
 
@@ -566,7 +580,7 @@ func (s *VisualizationService) applyGrouping(nodes []visualization.VisualNode, e
 	if len(groups) == 0 {
 		return nodes, edges
 	}
-	
+
 	// グループ化されるデバイスIDのセットを作成
 	groupedDeviceIDs := make(map[string]bool)
 	for _, group := range groups {
@@ -574,11 +588,11 @@ func (s *VisualizationService) applyGrouping(nodes []visualization.VisualNode, e
 			groupedDeviceIDs[deviceID] = true
 		}
 	}
-	
+
 	// グループ化されたノードの先のノードも特定
 	nodesAfterGroups := make(map[string]bool)
 	s.findNodesAfterGroups(nodes, edges, groupedDeviceIDs, nodesAfterGroups, rootDeviceID)
-	
+
 	// グループ化されないノードを保持（グループの先のノードも除外、ただしルートノードは除外しない）
 	filteredNodes := make([]visualization.VisualNode, 0)
 	for _, node := range nodes {
@@ -586,7 +600,7 @@ func (s *VisualizationService) applyGrouping(nodes []visualization.VisualNode, e
 			filteredNodes = append(filteredNodes, node)
 		}
 	}
-	
+
 	// グループノードを追加（VisualNodeとして）
 	for _, group := range groups {
 		groupVisualNode := visualization.VisualNode{
@@ -608,27 +622,27 @@ func (s *VisualizationService) applyGrouping(nodes []visualization.VisualNode, e
 		}
 		filteredNodes = append(filteredNodes, groupVisualNode)
 	}
-	
+
 	// シンプルなエッジ変換アプローチ
 	filteredEdges := make([]visualization.VisualEdge, 0)
 	edgeIDMap := make(map[string]bool) // 重複エッジを防ぐ
-	
+
 	fmt.Printf("Processing %d edges for grouping\n", len(edges))
-	
+
 	for _, edge := range edges {
 		sourceGrouped := groupedDeviceIDs[edge.Source]
 		targetGrouped := groupedDeviceIDs[edge.Target]
-		
-		fmt.Printf("Edge %s: %s->%s, sourceGrouped=%v, targetGrouped=%v\n", 
+
+		fmt.Printf("Edge %s: %s->%s, sourceGrouped=%v, targetGrouped=%v\n",
 			edge.ID, edge.Source, edge.Target, sourceGrouped, targetGrouped)
-		
+
 		// Case 1: 両方ともグループ化されていない → そのまま保持
 		if !sourceGrouped && !targetGrouped {
 			filteredEdges = append(filteredEdges, edge)
 			fmt.Printf("  Kept original edge\n")
 			continue
 		}
-		
+
 		// Case 2: ソースのみグループ化 → グループ->ターゲットのエッジ作成
 		if sourceGrouped && !targetGrouped {
 			groupID := s.findGroupIDForDevice(edge.Source, groups)
@@ -652,7 +666,7 @@ func (s *VisualizationService) applyGrouping(nodes []visualization.VisualNode, e
 			}
 			continue
 		}
-		
+
 		// Case 3: ターゲットのみグループ化 → ソース->グループのエッジ作成
 		if !sourceGrouped && targetGrouped {
 			groupID := s.findGroupIDForDevice(edge.Target, groups)
@@ -676,13 +690,13 @@ func (s *VisualizationService) applyGrouping(nodes []visualization.VisualNode, e
 			}
 			continue
 		}
-		
+
 		// Case 4: 両方がグループ化 → 内部エッジなので除外
 		fmt.Printf("  Skipped internal edge\n")
 	}
-	
+
 	fmt.Printf("Final filtered edges: %d\n", len(filteredEdges))
-	
+
 	return filteredNodes, filteredEdges
 }
 
@@ -692,7 +706,7 @@ func (s *VisualizationService) countInternalEdges(deviceIDs []string, edges []vi
 	for _, id := range deviceIDs {
 		deviceSet[id] = true
 	}
-	
+
 	count := 0
 	for _, edge := range edges {
 		if deviceSet[edge.Source] && deviceSet[edge.Target] {
@@ -708,12 +722,12 @@ func (s *VisualizationService) findExternalEdges(deviceIDs []string, edges []vis
 	for _, id := range deviceIDs {
 		deviceSet[id] = true
 	}
-	
+
 	var externalEdges []string
 	for _, edge := range edges {
 		sourceInGroup := deviceSet[edge.Source]
 		targetInGroup := deviceSet[edge.Target]
-		
+
 		// 片方だけがグループ内にある場合は外部エッジ
 		if (sourceInGroup && !targetInGroup) || (!sourceInGroup && targetInGroup) {
 			externalEdges = append(externalEdges, edge.ID)
@@ -744,18 +758,18 @@ func (s *VisualizationService) findNodesAfterGroups(nodes []visualization.Visual
 			TargetID: edge.Target,
 		}
 	}
-	
-	// Convert VisualNode to Device for calculateDeviceDepths  
+
+	// Convert VisualNode to Device for calculateDeviceDepths
 	devices := make([]topology.Device, len(nodes))
 	for i, node := range nodes {
 		devices[i] = topology.Device{
 			ID: node.ID,
 		}
 	}
-	
+
 	// Create a map of node depths from root
 	deviceDepthMap := s.calculateDeviceDepths(devices, links, rootDeviceID)
-	
+
 	// Find the maximum depth of grouped devices
 	maxGroupDepth := 0
 	for deviceID := range groupedDeviceIDs {
@@ -763,8 +777,8 @@ func (s *VisualizationService) findNodesAfterGroups(nodes []visualization.Visual
 			maxGroupDepth = depth
 		}
 	}
-	
-	// Any non-grouped node that is deeper than the max group depth 
+
+	// Any non-grouped node that is deeper than the max group depth
 	// and only reachable through grouped nodes should be hidden
 	for _, node := range nodes {
 		if !groupedDeviceIDs[node.ID] && !node.IsRoot {
@@ -789,14 +803,14 @@ func (s *VisualizationService) isOnlyReachableThroughGroups(nodeID string, edges
 			neighbors = append(neighbors, edge.Source)
 		}
 	}
-	
+
 	// If all neighbors are grouped devices, then this node is only reachable through groups
 	for _, neighbor := range neighbors {
 		if !groupedDeviceIDs[neighbor] {
 			return false // Found a non-grouped neighbor
 		}
 	}
-	
+
 	return len(neighbors) > 0 // Only return true if there are neighbors (avoid isolated nodes)
 }
 
@@ -1081,11 +1095,161 @@ func (s *VisualizationService) getDeviceLayer(layerID *int) int {
 	return *layerID
 }
 
+// classifyConnections classifies device connections into uplinks, downlinks, and peers
+func (s *VisualizationService) classifyConnections(ctx context.Context, deviceID string, deviceMap map[string]topology.Device, links []topology.Link) *visualization.ConnectionClassification {
+	device, exists := deviceMap[deviceID]
+	if !exists {
+		return &visualization.ConnectionClassification{}
+	}
+
+	deviceLayer := s.getDeviceLayer(device.LayerID)
+	
+	var uplinks []visualization.ConnectionInfo
+	var downlinks []visualization.ConnectionInfo
+	var peers []visualization.ConnectionInfo
+
+	// デバイスに接続されているリンクを探す
+	for _, link := range links {
+		var connectedDeviceID string
+		var localPort, remotePort string
+
+		if link.SourceID == deviceID {
+			connectedDeviceID = link.TargetID
+			localPort = link.SourcePort
+			remotePort = link.TargetPort
+		} else if link.TargetID == deviceID {
+			connectedDeviceID = link.SourceID
+			localPort = link.TargetPort
+			remotePort = link.SourcePort
+		} else {
+			continue
+		}
+
+		connectedDevice, exists := deviceMap[connectedDeviceID]
+		if !exists {
+			continue
+		}
+
+		connectedLayer := s.getDeviceLayer(connectedDevice.LayerID)
+		
+		// 接続情報の構築
+		connInfo := visualization.ConnectionInfo{
+			DeviceID:        connectedDeviceID,
+			DeviceName:      connectedDevice.ID,
+			DeviceType:      connectedDevice.Type,
+			DeviceHardware:  connectedDevice.Hardware,
+			Layer:           connectedLayer,
+			LocalPort:       localPort,
+			RemotePort:      remotePort,
+			Status:          "active", // デフォルト
+			LinkWeight:      link.Weight,
+		}
+
+		// 階層レベルに基づく分類
+		if connectedLayer < deviceLayer {
+			// 上位階層への接続 = uplink
+			uplinks = append(uplinks, connInfo)
+		} else if connectedLayer > deviceLayer {
+			// 下位階層への接続 = downlink
+			downlinks = append(downlinks, connInfo)
+		} else {
+			// 同一階層への接続 = peer
+			// さらに同じグループ（同じdownlinkに接続）かどうかを判定
+			connInfo.IsSameGroup = s.isInSameGroup(ctx, deviceID, connectedDeviceID, deviceMap, links)
+			peers = append(peers, connInfo)
+		}
+	}
+
+	return &visualization.ConnectionClassification{
+		Uplinks:   uplinks,
+		Downlinks: downlinks,
+		Peers:     peers,
+	}
+}
+
+// determineConnectionType determines the type of connection between two devices
+func (s *VisualizationService) determineConnectionType(link topology.Link, deviceMap map[string]topology.Device) string {
+	sourceDevice, sourceExists := deviceMap[link.SourceID]
+	targetDevice, targetExists := deviceMap[link.TargetID]
+	
+	if !sourceExists || !targetExists {
+		return "unknown"
+	}
+
+	sourceLayer := s.getDeviceLayer(sourceDevice.LayerID)
+	targetLayer := s.getDeviceLayer(targetDevice.LayerID)
+
+	if sourceLayer < targetLayer {
+		return "uplink" // source が上位階層、target が下位階層
+	} else if sourceLayer > targetLayer {
+		return "downlink" // source が下位階層、target が上位階層
+	} else {
+		return "peer" // 同一階層
+	}
+}
+
+// isInSameGroup checks if two devices in the same layer are in the same group
+// (connected to the same uplink devices)
+func (s *VisualizationService) isInSameGroup(ctx context.Context, device1ID, device2ID string, deviceMap map[string]topology.Device, links []topology.Link) bool {
+	// device1のuplinkを取得
+	device1Uplinks := s.getUplinkDevices(device1ID, deviceMap, links)
+	// device2のuplinkを取得
+	device2Uplinks := s.getUplinkDevices(device2ID, deviceMap, links)
+
+	// 共通するuplinkがあるかチェック
+	for _, uplink1 := range device1Uplinks {
+		for _, uplink2 := range device2Uplinks {
+			if uplink1 == uplink2 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// getUplinkDevices returns list of uplink device IDs for a given device
+func (s *VisualizationService) getUplinkDevices(deviceID string, deviceMap map[string]topology.Device, links []topology.Link) []string {
+	device, exists := deviceMap[deviceID]
+	if !exists {
+		return []string{}
+	}
+
+	deviceLayer := s.getDeviceLayer(device.LayerID)
+	var uplinks []string
+
+	for _, link := range links {
+		var connectedDeviceID string
+
+		if link.SourceID == deviceID {
+			connectedDeviceID = link.TargetID
+		} else if link.TargetID == deviceID {
+			connectedDeviceID = link.SourceID
+		} else {
+			continue
+		}
+
+		connectedDevice, exists := deviceMap[connectedDeviceID]
+		if !exists {
+			continue
+		}
+
+		connectedLayer := s.getDeviceLayer(connectedDevice.LayerID)
+		
+		// 上位階層のデバイスのみ追加
+		if connectedLayer < deviceLayer {
+			uplinks = append(uplinks, connectedDeviceID)
+		}
+	}
+
+	return uplinks
+}
+
 // calculateHierarchicalLayout calculates positions for hierarchical display
 func (s *VisualizationService) calculateHierarchicalLayout(nodes []visualization.VisualNode, edges []visualization.VisualEdge, rootDeviceID string) {
 	// 階層別にノードを分類
 	layers := make(map[int][]int) // layer -> node indices
-	
+
 	for i, node := range nodes {
 		layer := node.Layer
 		if layers[layer] == nil {
@@ -1093,17 +1257,17 @@ func (s *VisualizationService) calculateHierarchicalLayout(nodes []visualization
 		}
 		layers[layer] = append(layers[layer], i)
 	}
-	
+
 	// Y座標は階層別に設定
 	layerSpacing := 150.0
 	nodeSpacing := 120.0
-	
+
 	for layer, nodeIndices := range layers {
 		y := float64(layer) * layerSpacing
-		
+
 		// X座標は同一階層内で均等配置
 		startX := -(float64(len(nodeIndices)-1) * nodeSpacing) / 2
-		
+
 		for i, nodeIndex := range nodeIndices {
 			x := startX + float64(i)*nodeSpacing
 			nodes[nodeIndex].Position.X = x

@@ -189,7 +189,8 @@ function HierarchicalTopology({ topology, onDeviceSelect, selectedDevice }) {
                           {device.is_root && <span className="root-badge">ROOT</span>}
                         </div>
                         
-                        {device.connections.length > 0 && (
+                        {/* 従来の接続表示 */}
+                        {device.connections && device.connections.length > 0 && (
                           <button
                             className="connections-toggle"
                             onClick={(e) => {
@@ -203,11 +204,32 @@ function HierarchicalTopology({ topology, onDeviceSelect, selectedDevice }) {
                             <span>接続先 ({device.connections.length})</span>
                           </button>
                         )}
+                        
+                        {/* 新しい分類された接続表示 */}
+                        {device.connections && (device.connections.uplinks?.length > 0 || device.connections.downlinks?.length > 0 || device.connections.peers?.length > 0) && (
+                          <button
+                            className="connections-toggle classified"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleDeviceExpansion(device.id)
+                            }}
+                          >
+                            <span className={`expand-icon ${expandedDevices.has(device.id) ? 'expanded' : ''}`}>
+                              ▶
+                            </span>
+                            <span>
+                              接続先 (
+                              {device.connections.uplinks?.length || 0}↑ {device.connections.downlinks?.length || 0}↓ {device.connections.peers?.length || 0}⟷
+                              )
+                            </span>
+                          </button>
+                        )}
                       </div>
 
-                      {expandedDevices.has(device.id) && device.connections.length > 0 && (
+                      {expandedDevices.has(device.id) && (
                         <div className="connections-list">
-                          {device.connections.map((connection, index) => {
+                          {/* 従来の接続表示（後方互換性のため） */}
+                          {device.connections && Array.isArray(device.connections) && device.connections.map((connection, index) => {
                             const connectedDevice = topology.nodes.find(n => n.id === connection.device)
                             return (
                               <div 
@@ -240,6 +262,116 @@ function HierarchicalTopology({ topology, onDeviceSelect, selectedDevice }) {
                               </div>
                             )
                           })}
+                          
+                          {/* 新しい分類された接続表示 */}
+                          {device.connections && !Array.isArray(device.connections) && (
+                            <>
+                              {/* Uplinks */}
+                              {device.connections.uplinks && device.connections.uplinks.length > 0 && (
+                                <div className="connection-category">
+                                  <h4 className="category-title uplinks">↑ Uplinks ({device.connections.uplinks.length})</h4>
+                                  {device.connections.uplinks.map((connection, index) => (
+                                    <div 
+                                      key={`uplink-${device.id}-${connection.device_id}-${index}`}
+                                      className="connection-item uplink"
+                                      onClick={() => handleConnectionClick(connection.device_id)}
+                                    >
+                                      <div className="connection-line">
+                                        <span className="port-info">
+                                          {connection.local_port} ↔ {connection.remote_port}
+                                        </span>
+                                        <span className="connection-status">
+                                          {getStatusIcon(connection.status)}
+                                        </span>
+                                      </div>
+                                      <div className="connected-device">
+                                        <span className="device-icon">
+                                          {getDeviceIcon(connection.device_type)}
+                                        </span>
+                                        <span className="device-name">{connection.device_name}</span>
+                                        <span className="device-layer">L{connection.layer}</span>
+                                        <span className="device-type">{connection.device_type}</span>
+                                        {connection.device_hardware && (
+                                          <span className="device-hardware">{connection.device_hardware}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {/* Downlinks */}
+                              {device.connections.downlinks && device.connections.downlinks.length > 0 && (
+                                <div className="connection-category">
+                                  <h4 className="category-title downlinks">↓ Downlinks ({device.connections.downlinks.length})</h4>
+                                  {device.connections.downlinks.map((connection, index) => (
+                                    <div 
+                                      key={`downlink-${device.id}-${connection.device_id}-${index}`}
+                                      className="connection-item downlink"
+                                      onClick={() => handleConnectionClick(connection.device_id)}
+                                    >
+                                      <div className="connection-line">
+                                        <span className="port-info">
+                                          {connection.local_port} ↔ {connection.remote_port}
+                                        </span>
+                                        <span className="connection-status">
+                                          {getStatusIcon(connection.status)}
+                                        </span>
+                                      </div>
+                                      <div className="connected-device">
+                                        <span className="device-icon">
+                                          {getDeviceIcon(connection.device_type)}
+                                        </span>
+                                        <span className="device-name">{connection.device_name}</span>
+                                        <span className="device-layer">L{connection.layer}</span>
+                                        <span className="device-type">{connection.device_type}</span>
+                                        {connection.device_hardware && (
+                                          <span className="device-hardware">{connection.device_hardware}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {/* Peers */}
+                              {device.connections.peers && device.connections.peers.length > 0 && (
+                                <div className="connection-category">
+                                  <h4 className="category-title peers">⟷ Peers ({device.connections.peers.length})</h4>
+                                  {device.connections.peers.map((connection, index) => (
+                                    <div 
+                                      key={`peer-${device.id}-${connection.device_id}-${index}`}
+                                      className={`connection-item peer ${connection.is_same_group ? 'same-group' : 'different-group'}`}
+                                      onClick={() => handleConnectionClick(connection.device_id)}
+                                    >
+                                      <div className="connection-line">
+                                        <span className="port-info">
+                                          {connection.local_port} ↔ {connection.remote_port}
+                                        </span>
+                                        <span className="connection-status">
+                                          {getStatusIcon(connection.status)}
+                                        </span>
+                                        {connection.is_same_group && (
+                                          <span className="group-indicator">🔗</span>
+                                        )}
+                                      </div>
+                                      <div className="connected-device">
+                                        <span className="device-icon">
+                                          {getDeviceIcon(connection.device_type)}
+                                        </span>
+                                        <span className="device-name">{connection.device_name}</span>
+                                        <span className="device-layer">L{connection.layer}</span>
+                                        <span className="device-type">{connection.device_type}</span>
+                                        {connection.device_hardware && (
+                                          <span className="device-hardware">{connection.device_hardware}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
