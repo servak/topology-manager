@@ -13,7 +13,6 @@ import (
 	"github.com/servak/topology-manager/internal/domain/classification"
 	"github.com/servak/topology-manager/internal/prometheus"
 	"github.com/servak/topology-manager/internal/repository"
-	"github.com/servak/topology-manager/internal/repository/postgres"
 	"github.com/servak/topology-manager/internal/worker"
 	"github.com/spf13/cobra"
 )
@@ -101,7 +100,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create database repository
-	repo, err := repository.NewDatabase(&cfg.Database)
+	repo, err := repository.NewRepository(cfg.GetDatabaseConfig())
 	if err != nil {
 		return fmt.Errorf("failed to create database: %w", err)
 	}
@@ -129,15 +128,9 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Create classification repository if auto-classification is enabled
-	var classificationRepo classification.Repository
+	// Repository includes both topology and classification interfaces
+	var classificationRepo classification.Repository = repo
 	if enableAutoClassify {
-		// PostgreSQL specific implementation
-		pgRepo, ok := repo.(*postgres.PostgresRepository)
-		if !ok {
-			return fmt.Errorf("auto-classification requires PostgreSQL, got %T", repo)
-		}
-		classificationRepo = postgres.NewClassificationRepository(pgRepo.GetDB())
 		logger.Println("Auto-classification enabled")
 	}
 

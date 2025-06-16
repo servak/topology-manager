@@ -1,96 +1,112 @@
 # Network Topology Manager
 
-PrometheusからSNMP/LLDP情報を収集し、ネットワーク機器の階層トポロジーを可視化するシステム。
+ネットワーク機器の階層分類・管理を中心としたシンプルなネットワーク管理システム。
 
-## 機能
+## 主要機能
 
-- PrometheusからLLDPメトリクス自動収集
-- デバイス階層分類
-- インタラクティブなトポロジー可視化
-- OpenAPI準拠のREST API（Huma v2）
-- PostgreSQLによる永続化
-- 単一バイナリでCLI実行
+- **階層分類管理**: ネットワーク機器の自動・手動分類
+- **分類ルール管理**: 命名規則や属性ベースの自動分類ルール
+- **階層トポロジー表示**: レイヤー構造に基づく可視化
+- **REST API**: OpenAPI準拠の管理API（Huma v2）
+- **サイドバーUI**: 直感的な管理画面
+- **データ同期**: Prometheusからのメトリクス自動収集
 
 ## アーキテクチャ
 
 ```
-Prometheus ← Worker → PostgreSQL → API (Huma) → React UI
+Prometheus → Worker → Database → API Server → Web UI
 ```
 
 ### 技術構成
 
 - **バックエンド**: Go + Huma v2 (OpenAPI準拠)
-- **データベース**: PostgreSQL
-- **フロントエンド**: React + Cytoscape.js
+- **データベース**: SQLite（開発・テスト）/ PostgreSQL（プロダクション）
+- **フロントエンド**: React（サイドバー形式UI）
 - **CLI**: Cobra
-- **データソース**: Prometheus (LLDP metrics)
+- **テスト**: Go標準テスト + SQLite（インメモリ）
+
+## データベース戦略
+
+開発効率とテスト容易性を重視したハイブリッド構成：
+
+- **開発環境**: SQLite（ファイルベース）
+- **テスト環境**: SQLite（インメモリ）
+- **プロダクション**: PostgreSQL
+
+同一のインターフェースで両方をサポートし、設定で切り替え可能。
 
 ## クイックスタート
 
-### 1. 依存関係の起動
+### 1. 開発環境（SQLite使用）
+
+```bash
+# リポジトリクローン
+git clone <repository-url>
+cd topology-manager
+
+# 依存関係インストール
+go mod download
+
+# SQLiteでデータベース初期化
+go run ./cmd/ migrate up --db-type sqlite --db-path ./dev.db
+
+# サンプルデータ投入
+go run ./cmd/ seed --count 20
+
+# API サーバー起動（SQLite使用）
+go run ./cmd/ api --db-type sqlite --db-path ./dev.db
+```
+
+### 2. プロダクション環境（PostgreSQL使用）
 
 ```bash
 # PostgreSQL起動
-docker run -d --name postgres -p 5432:5432 -e POSTGRES_DB=topology_manager -e POSTGRES_USER=topology -e POSTGRES_PASSWORD=topology postgres:15-alpine
-```
+docker run -d --name postgres \
+  -p 5432:5432 \
+  -e POSTGRES_DB=topology_manager \
+  -e POSTGRES_USER=tm \
+  -e POSTGRES_PASSWORD=tm_password \
+  postgres:15-alpine
 
-### 2. データベースセットアップ
+# 環境変数設定
+export DB_TYPE=postgres
+export DB_HOST=localhost
+export DB_USER=tm
+export DB_PASSWORD=tm_password
+export DB_NAME=topology_manager
 
-```bash
 # マイグレーション実行
 go run ./cmd/ migrate up
 
-# または CLI使用
-./topology-manager migrate up
+# API サーバー起動
+go run ./cmd/ api --port 8080
 ```
 
-### 3. アプリケーションのビルド
+### 3. フロントエンド起動
 
 ```bash
-# Goアプリケーション
-go build -o topology-manager ./cmd/
-
-# フロントエンド（オプション）
 cd web
 npm install
-npm run build
+npm run dev
 ```
 
-### 4. 設定
+### 4. アクセス
 
-環境変数設定:
-```bash
-export DATABASE_URL="postgres://topology:topology@localhost/topology_manager?sslmode=disable"
-export PROMETHEUS_URL=http://localhost:9090
-```
-
-### 5. 実行
-
-```bash
-# データ収集ワーカー起動
-./topology-manager worker --interval 300
-
-# API サーバー起動
-./topology-manager api --port 8080
-```
-
-### 6. アクセス
-
-- Web UI: http://localhost:8080
-- API ドキュメント: http://localhost:8080/docs
-- トポロジー取得: http://localhost:8080/api/topology/device.example?depth=3
+- **Web UI**: http://localhost:8080
+- **API ドキュメント**: http://localhost:8080/docs
+- **ヘルスチェック**: http://localhost:8080/api/v1/health
 
 ## CLI コマンド
 
 ```bash
 # API サーバー起動
-topology-manager api --port 8080
+topology-manager api [--port 8080] [--db-type sqlite|postgres]
 
 # データ収集ワーカー起動  
-topology-manager worker --interval 300
+topology-manager worker [--interval 300]
 
 # データベースマイグレーション
-topology-manager migrate up
+topology-manager migrate up [--db-type sqlite|postgres]
 topology-manager migrate down
 
 # サンプルデータ生成
@@ -99,143 +115,159 @@ topology-manager seed --count 50 --clear
 
 # バージョン表示
 topology-manager version
-
-# ヘルプ
-topology-manager --help
 ```
 
-## API エンドポイント
+## 主要APIエンドポイント
 
-全てのAPIエンドポイントは `/api` パスで始まり、OpenAPI準拠の自動生成ドキュメントが `/docs` で確認できます。
+全てのAPIは `/api/v1` パスで始まり、OpenAPI準拠です。
 
-### GET /api/topology/{deviceId}
-トポロジー取得
+### デバイス分類管理
 
-**Parameters:**
-- `deviceId` (path, required): 起点デバイスID
-- `depth` (query, default: 3): 探索深度
-
-**Example:**
 ```bash
-curl "http://localhost:8080/api/topology/s4.colo?depth=3"
+# 未分類デバイス一覧
+curl "http://localhost:8080/api/v1/classification/unclassified"
+
+# 手動分類
+curl -X POST "http://localhost:8080/api/v1/classification/devices/{deviceId}/classify" \
+  -H "Content-Type: application/json" \
+  -d '{"layer": 2, "device_type": "distribution", "user_id": "admin"}'
+
+# 分類削除
+curl -X DELETE "http://localhost:8080/api/v1/classification/devices/{deviceId}"
 ```
 
-### GET /api/devices
-デバイス一覧取得（ページング対応）
+### 分類ルール管理
 
 ```bash
-# 基本的な一覧取得
-curl "http://localhost:8080/api/devices"
+# ルール一覧
+curl "http://localhost:8080/api/v1/classification/rules"
 
-# ページング指定
-curl "http://localhost:8080/api/devices?page=2&page_size=50"
-
-# フィルタリング + ソート
-curl "http://localhost:8080/api/devices?type=switch&order_by=layer&sort_dir=desc"
-
-# 複合条件
-curl "http://localhost:8080/api/devices?hardware=Arista&page=1&page_size=10&order_by=name"
-```
-
-### GET /api/devices/{deviceId}
-デバイス詳細情報
-
-```bash
-curl "http://localhost:8080/api/devices/s4.colo"
-```
-
-### GET /api/devices/{deviceId}/neighbors
-デバイスと隣接機器情報
-
-```bash
-curl "http://localhost:8080/api/devices/s4.colo/neighbors"
-```
-
-### POST /api/devices
-デバイス追加
-
-```bash
-curl -X POST "http://localhost:8080/api/devices" \
+# ルール作成
+curl -X POST "http://localhost:8080/api/v1/classification/rules" \
   -H "Content-Type: application/json" \
   -d '{
-    "id": "device-001",
-    "name": "example-switch",
-    "type": "switch",
-    "hardware": "Arista 7280",
-    "layer": 4
+    "name": "Core Switch Rule",
+    "conditions": [{"field": "name", "operator": "starts_with", "value": "core-"}],
+    "layer": 1,
+    "device_type": "core"
   }'
 ```
 
-### POST /api/links
-リンク追加
+### 階層トポロジー
 
 ```bash
-curl -X POST "http://localhost:8080/api/links" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "id": "link-001",
-    "source_id": "device-001",
-    "target_id": "device-002",
-    "source_port": "Ethernet1",
-    "target_port": "Ethernet1"
-  }'
-```
+# 階層表示用トポロジー取得
+curl "http://localhost:8080/api/v1/topology/visual/{deviceId}?depth=3"
 
-### GET /api/health
-ヘルスチェック
-
-```bash
-curl "http://localhost:8080/api/health"
+# デバイス検索
+curl "http://localhost:8080/api/v1/devices/search?q=switch"
 ```
 
 ## 設定
 
-### 階層分類 (config/hierarchy.yaml)
-
-```yaml
-hierarchy:
-  device_types:
-    core: 3
-    distribution: 4
-    access: 5
-    server: 6
-
-  naming_rules:
-    - pattern: "^core.*"
-      type: "core"
-    - pattern: "^access.*"
-      type: "access"
-
-  manual_overrides:
-    "special-device": "core"
-```
-
 ### 環境変数
 
-- `DATABASE_URL`: PostgreSQL接続先 (default: postgres://topology:topology@localhost/topology_manager?sslmode=disable)
-- `PORT`: APIサーバーポート (default: 8080)
-- `PROMETHEUS_URL`: Prometheus URL (default: http://localhost:9090)
-- `TOPOLOGY_CONFIG_PATH`: 設定ファイルパス
-- `WEB_DIR`: Webアセットディレクトリ
+```bash
+# データベース設定
+export DB_TYPE=sqlite              # sqlite または postgres
+export DB_PATH=./dev.db           # SQLite使用時のファイルパス
+export DB_HOST=localhost          # PostgreSQL接続先
+export DB_USER=tm                 # PostgreSQLユーザー
+export DB_PASSWORD=tm_password    # PostgreSQLパスワード
+export DB_NAME=topology_manager   # データベース名
 
-## 開発
+# API設定
+export PORT=8080                  # APIサーバーポート
+
+# Prometheus設定
+export PROMETHEUS_URL=http://localhost:9090
+```
+
+### 設定ファイル（tm.yaml）
+
+```yaml
+database:
+  type: sqlite  # または postgres
+  sqlite:
+    path: "./dev.db"
+  postgres:
+    host: ${DB_HOST:localhost}
+    port: 5432
+    user: ${DB_USER:tm}
+    password: ${DB_PASSWORD:tm_password}
+    dbname: ${DB_NAME:topology_manager}
+
+prometheus:
+  url: "${PROMETHEUS_URL:http://localhost:9090}"
+```
+
+## 開発・テスト
 
 ### 前提条件
 
 - Go 1.21+
 - Node.js 18+
-- PostgreSQL
-- Prometheus (LLDP metrics)
+- SQLite（開発）
+- PostgreSQL（本番運用時）
 
-### 開発環境起動
+### テスト実行
 
 ```bash
-# バックエンド
-go run ./cmd/main.go api
+# 単体テスト（SQLiteインメモリ使用）
+go test ./...
 
-# フロントエンド
-cd web
-npm run dev
+# 統合テスト
+go test ./... -tags=integration
+
+# カバレッジ取得
+go test -cover ./...
+
+# ベンチマークテスト
+go test -bench=. ./...
+```
+
+### 開発環境
+
+```bash
+# バックエンド（ホットリロード）
+go run ./cmd/ api --db-type sqlite --db-path ./dev.db
+
+# フロントエンド（開発サーバー）
+cd web && npm run dev
+
+# データベース初期化
+rm -f ./dev.db && go run ./cmd/ migrate up --db-type sqlite --db-path ./dev.db
+```
+
+### テスト用データベース
+
+テストコードでは自動的にSQLiteインメモリデータベースを使用：
+
+```go
+// テスト用のリポジトリセットアップ
+repo, err := postgres.NewRepository(":memory:", "sqlite")
+if err != nil {
+    t.Fatal(err)
+}
+defer repo.Close()
+```
+
+## ディレクトリ構成
+
+```
+topology-manager/
+├── cmd/                    # CLIエントリーポイント
+├── internal/              # 内部パッケージ
+│   ├── api/handler/       # HTTPハンドラー
+│   ├── domain/            # ドメインエンティティ
+│   ├── repository/        # データアクセス層
+│   │   ├── postgres/      # PostgreSQL/SQLite実装
+│   │   └── sqlite/        # SQLite専用最適化（今後）
+│   ├── service/           # ビジネスロジック
+│   └── config/            # 設定管理
+├── web/                   # React フロントエンド
+├── tests/                 # 統合テスト
+└── migrations/            # データベースマイグレーション
 ```
 
 ## ライセンス

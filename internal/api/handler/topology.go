@@ -7,15 +7,18 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/servak/topology-manager/internal/domain/topology"
 	"github.com/servak/topology-manager/internal/service"
+	"github.com/servak/topology-manager/pkg/logger"
 )
 
 type TopologyHandler struct {
 	topologyService *service.TopologyService
+	logger          *logger.Logger
 }
 
-func NewTopologyHandler(topologyService *service.TopologyService) *TopologyHandler {
+func NewTopologyHandler(topologyService *service.TopologyService, appLogger *logger.Logger) *TopologyHandler {
 	return &TopologyHandler{
 		topologyService: topologyService,
+		logger:          appLogger.WithComponent("topology_handler"),
 	}
 }
 
@@ -49,9 +52,9 @@ func (h *TopologyHandler) Register(api huma.API) {
 
 // トポロジー検索ハンドラー
 func (h *TopologyHandler) FindReachableDevices(ctx context.Context, input *struct {
-	DeviceID   string `path:"deviceId"`
-	Algorithm  string `query:"algorithm" enum:"bfs,dfs" default:"bfs"`
-	MaxHops    int    `query:"max_hops" default:"5"`
+	DeviceID  string `path:"deviceId"`
+	Algorithm string `query:"algorithm" enum:"bfs,dfs" default:"bfs"`
+	MaxHops   int    `query:"max_hops" default:"5"`
 }) (*struct {
 	Body struct {
 		Devices   []topology.Device `json:"devices"`

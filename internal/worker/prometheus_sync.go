@@ -27,23 +27,23 @@ type PrometheusSync struct {
 // PrometheusSyncConfig holds configuration for Prometheus synchronization
 type PrometheusSyncConfig struct {
 	// Collection intervals
-	LLDPSyncInterval      time.Duration `yaml:"lldp_sync_interval"`
-	DeviceSyncInterval    time.Duration `yaml:"device_sync_interval"`
-	CleanupInterval       time.Duration `yaml:"cleanup_interval"`
-	
+	LLDPSyncInterval   time.Duration `yaml:"lldp_sync_interval"`
+	DeviceSyncInterval time.Duration `yaml:"device_sync_interval"`
+	CleanupInterval    time.Duration `yaml:"cleanup_interval"`
+
 	// Sync behavior
-	EnableLLDPSync        bool `yaml:"enable_lldp_sync"`
-	EnableDeviceSync      bool `yaml:"enable_device_sync"`
-	EnableCleanup         bool `yaml:"enable_cleanup"`
-	EnableAutoClassify    bool `yaml:"enable_auto_classify"`
-	
+	EnableLLDPSync     bool `yaml:"enable_lldp_sync"`
+	EnableDeviceSync   bool `yaml:"enable_device_sync"`
+	EnableCleanup      bool `yaml:"enable_cleanup"`
+	EnableAutoClassify bool `yaml:"enable_auto_classify"`
+
 	// Data management
-	MaxDeviceAge          time.Duration `yaml:"max_device_age"`
-	MaxLinkAge            time.Duration `yaml:"max_link_age"`
-	
+	MaxDeviceAge time.Duration `yaml:"max_device_age"`
+	MaxLinkAge   time.Duration `yaml:"max_link_age"`
+
 	// Batch settings
-	BatchSize             int `yaml:"batch_size"`
-	SyncTimeout           time.Duration `yaml:"sync_timeout"`
+	BatchSize   int           `yaml:"batch_size"`
+	SyncTimeout time.Duration `yaml:"sync_timeout"`
 }
 
 // DefaultPrometheusSyncConfig returns default configuration
@@ -210,7 +210,7 @@ func (ps *PrometheusSync) syncLLDPTopology(ctx context.Context) error {
 
 	// Extract links using MetricsExtractor with fallback support
 	links, warnings := ps.metricsExtractor.ExtractLinks(ctx)
-	
+
 	// Log warnings (data missing scenarios)
 	for _, warning := range warnings {
 		ps.logger.Printf("Info: %v", warning)
@@ -242,7 +242,7 @@ func (ps *PrometheusSync) syncDeviceInfo(ctx context.Context) error {
 
 	// Extract devices using MetricsExtractor with fallback support
 	devices, warnings := ps.metricsExtractor.ExtractDevices(ctx)
-	
+
 	// Log warnings (data missing scenarios)
 	for _, warning := range warnings {
 		ps.logger.Printf("Info: %v", warning)
@@ -366,13 +366,13 @@ func (ps *PrometheusSync) ensureReferencedDevicesExist(ctx context.Context, link
 	// Create placeholder devices for missing ones
 	var missingDevices []topology.Device
 	now := time.Now()
-	
+
 	for _, deviceID := range deviceIDs {
 		if !existingDevices[deviceID] {
 			device := topology.Device{
 				ID:        deviceID,
 				Type:      "unknown",
-				Hardware:  "unknown", 
+				Hardware:  "unknown",
 				LayerID:   nil, // will be set by classification
 				Metadata:  make(map[string]string),
 				LastSeen:  now,

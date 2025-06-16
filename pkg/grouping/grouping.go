@@ -123,7 +123,7 @@ func findGroupPrefix(devices []string) string {
 	// Ensure prefix ends at a logical boundary (e.g., after dash, dot, underscore)
 	if len(prefix) > 0 {
 		lastChar := prefix[len(prefix)-1]
-		
+
 		// If it already ends with a separator, keep it
 		if lastChar == '-' || lastChar == '.' || lastChar == '_' {
 			return prefix

@@ -41,19 +41,19 @@ type TaskStatus struct {
 
 // Scheduler manages and executes scheduled tasks
 type Scheduler struct {
-	tasks       map[string]*Task
+	tasks        map[string]*Task
 	runningTasks map[string]context.CancelFunc
-	mu          sync.RWMutex
-	ctx         context.Context
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
-	logger      *log.Logger
+	mu           sync.RWMutex
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	logger       *log.Logger
 }
 
 // NewScheduler creates a new task scheduler
 func NewScheduler(logger *log.Logger) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	if logger == nil {
 		logger = log.Default()
 	}
@@ -150,7 +150,7 @@ func (s *Scheduler) DisableTask(taskID string) error {
 	}
 
 	task.Enabled = false
-	
+
 	// Cancel running task if any
 	if cancel, running := s.runningTasks[taskID]; running {
 		cancel()

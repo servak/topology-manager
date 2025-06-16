@@ -4,14 +4,14 @@ import "time"
 
 // DeviceClassification represents the manual or automatic classification of a device
 type DeviceClassification struct {
-	ID          string    `json:"id" db:"id"`
-	DeviceID    string    `json:"device_id" db:"device_id"`
-	Layer       int       `json:"layer" db:"layer"`
-	DeviceType  string    `json:"device_type" db:"device_type"`
-	IsManual    bool      `json:"is_manual" db:"is_manual"`
-	CreatedBy   string    `json:"created_by" db:"created_by"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	ID         string    `json:"id" db:"id"`
+	DeviceID   string    `json:"device_id" db:"device_id"`
+	Layer      int       `json:"layer" db:"layer"`
+	DeviceType string    `json:"device_type" db:"device_type"`
+	IsManual   bool      `json:"is_manual" db:"is_manual"`
+	CreatedBy  string    `json:"created_by" db:"created_by"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // RuleCondition represents a single condition in a classification rule
@@ -40,15 +40,15 @@ type ClassificationRule struct {
 
 // ClassificationSuggestion represents a suggested rule based on manual classifications
 type ClassificationSuggestion struct {
-	ID               string                `json:"id"`
-	RuleID           string                `json:"rule_id"`
-	Rule             ClassificationRule    `json:"rule"`
-	AffectedDevices  []string             `json:"affected_devices"`
-	BasedOnDevices   []string             `json:"based_on_devices"`
-	Confidence       float64              `json:"confidence"`
-	Status           SuggestionStatus     `json:"status"`
-	CreatedAt        time.Time            `json:"created_at"`
-	UpdatedAt        time.Time            `json:"updated_at"`
+	ID              string             `json:"id"`
+	RuleID          string             `json:"rule_id"`
+	Rule            ClassificationRule `json:"rule"`
+	AffectedDevices []string           `json:"affected_devices"`
+	BasedOnDevices  []string           `json:"based_on_devices"`
+	Confidence      float64            `json:"confidence"`
+	Status          SuggestionStatus   `json:"status"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
 // SuggestionStatus represents the status of a classification suggestion

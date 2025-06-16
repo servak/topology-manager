@@ -74,7 +74,7 @@ func (c *Client) Query(ctx context.Context, query string, timestamp time.Time) (
 	}
 
 	url := fmt.Sprintf("%s/api/v1/query?%s", c.baseURL, params.Encode())
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -112,7 +112,7 @@ func (c *Client) QueryRange(ctx context.Context, query string, start, end time.T
 	params.Set("step", fmt.Sprintf("%.0fs", step.Seconds()))
 
 	url := fmt.Sprintf("%s/api/v1/query_range?%s", c.baseURL, params.Encode())
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -147,7 +147,7 @@ func (c *Client) GetLLDPNeighbors(ctx context.Context) (*QueryResult, error) {
 	// This assumes LLDP metrics are exposed with labels like:
 	// lldp_neighbor_info{instance="device1", local_port="eth0", remote_chassis_id="...", remote_port_id="..."}
 	query := `lldp_neighbor_info`
-	
+
 	return c.Query(ctx, query, time.Time{})
 }
 
@@ -156,7 +156,7 @@ func (c *Client) GetDeviceInfo(ctx context.Context) (*QueryResult, error) {
 	// Query for device information from SNMP or other sources
 	// This could include device type, model, location, etc.
 	query := `{__name__=~"device_info|snmp_device_info"}`
-	
+
 	return c.Query(ctx, query, time.Time{})
 }
 
@@ -164,14 +164,14 @@ func (c *Client) GetDeviceInfo(ctx context.Context) (*QueryResult, error) {
 func (c *Client) GetInterfaceInfo(ctx context.Context) (*QueryResult, error) {
 	// Query for interface information
 	query := `{__name__=~"interface_info|snmp_if_.*"}`
-	
+
 	return c.Query(ctx, query, time.Time{})
 }
 
 // Health checks if Prometheus is healthy and reachable
 func (c *Client) Health(ctx context.Context) error {
 	url := fmt.Sprintf("%s/-/healthy", c.baseURL)
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create health check request: %w", err)

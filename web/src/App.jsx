@@ -1,158 +1,110 @@
-import React, { useState, useEffect } from 'react'
-import HierarchicalTopology from './components/HierarchicalTopology'
-import DeviceClassificationBoard from './components/DeviceClassificationBoard'
+import React, { useState } from 'react'
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
+import ClassificationPage from './pages/ClassificationPage'
+import HierarchyPage from './pages/HierarchyPage'
+import TopologyPage from './pages/TopologyPage'
+import SearchPage from './pages/SearchPage'
+import StatusPage from './pages/StatusPage'
 import './App.css'
 
-function App() {
-  const [topology, setTopology] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [selectedDevice, setSelectedDevice] = useState('')
-  const [activeTab, setActiveTab] = useState('classification')
+function AppContent() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const location = useLocation()
 
-  // 階層トポロジー取得
-  const loadHierarchicalTopology = async (rootDevice = null, depth = 5) => {
-    if (!rootDevice) return
-    
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const params = new URLSearchParams({
-        depth: depth.toString()
-      })
-      
-      const response = await fetch(`/api/v1/topology/visual/${encodeURIComponent(rootDevice)}?${params}`)
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+  const navItems = [
+    {
+      section: "📊 管理メニュー",
+      items: [
+        { path: '/classification', icon: '🏷️', label: 'デバイス分類', title: 'デバイス分類管理' },
+        { path: '/hierarchy', icon: '📋', label: '階層一覧', title: 'デバイス階層一覧' }
+      ]
+    },
+    {
+      section: "🗺️ トポロジー",
+      items: [
+        { path: '/topology', icon: '🌐', label: '階層表示', title: '階層トポロジー表示' },
+        { path: '/search', icon: '🔍', label: 'デバイス検索', title: 'デバイス検索' }
+      ]
+    },
+    {
+      section: "⚙️ システム",
+      items: [
+        { path: '/status', icon: '💚', label: 'システム状態', title: 'システム状態' }
+      ]
+    }
+  ]
+
+  // 現在のページタイトルを取得
+  const getCurrentPageTitle = () => {
+    for (const section of navItems) {
+      for (const item of section.items) {
+        if (item.path === location.pathname) {
+          return item.title
+        }
       }
-      
-      const data = await response.json()
-      setTopology(data)
-    } catch (err) {
-      console.error('Failed to load topology:', err)
-      setError(`トポロジーの読み込みに失敗しました: ${err.message}`)
-    } finally {
-      setLoading(false)
     }
-  }
-
-  // デバイス選択時の処理
-  const handleNavigateToDevice = (deviceId) => {
-    setSelectedDevice(deviceId)
-    loadHierarchicalTopology(deviceId)
-    
-    // URL更新
-    const url = new URL(window.location)
-    url.searchParams.set('device', deviceId)
-    window.history.pushState({}, '', url)
-  }
-
-  // URLパラメータからデバイスIDを読み込み
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const deviceFromUrl = params.get('device')
-    if (deviceFromUrl) {
-      setSelectedDevice(deviceFromUrl)
-      loadHierarchicalTopology(deviceFromUrl)
-    }
-  }, [])
-
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'topology':
-        return (
-          <div className="topology-section">
-            <div className="topology-controls">
-              <input
-                type="text"
-                placeholder="デバイスIDを入力してトポロジーを表示"
-                value={selectedDevice}
-                onChange={(e) => setSelectedDevice(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && selectedDevice.trim()) {
-                    loadHierarchicalTopology(selectedDevice.trim())
-                  }
-                }}
-              />
-              <button 
-                onClick={() => selectedDevice.trim() && loadHierarchicalTopology(selectedDevice.trim())}
-                disabled={loading || !selectedDevice.trim()}
-              >
-                {loading ? '読み込み中...' : 'トポロジー表示'}
-              </button>
-            </div>
-
-            {error && (
-              <div className="error-message">
-                {error}
-              </div>
-            )}
-
-            {topology && !loading && (
-              <div className="topology-container">
-                <div className="topology-header">
-                  <div className="topology-stats">
-                    <span>Nodes: {topology.stats.total_nodes}</span>
-                    <span>Edges: {topology.stats.total_edges}</span>
-                    <span>Root: {topology.root_device}</span>
-                    <span>Depth: {topology.depth}</span>
-                  </div>
-                </div>
-                
-                <HierarchicalTopology 
-                  topology={topology} 
-                  onDeviceSelect={handleNavigateToDevice}
-                  selectedDevice={selectedDevice}
-                />
-              </div>
-            )}
-
-            {!topology && !loading && !error && (
-              <div className="welcome-message">
-                <h3>🏗️ ネットワーク階層トポロジー</h3>
-                <p>デバイスIDを入力して、階層表示でネットワーク構造を確認できます。</p>
-              </div>
-            )}
-          </div>
-        )
-      case 'classification':
-        return <DeviceClassificationBoard />
-      default:
-        return null
-    }
+    return 'Network Topology Manager'
   }
 
   return (
     <div className="app">
-      <header className="app-header">
-        <div className="header-content">
-          <h1>🌐 Network Topology Manager</h1>
-          <p>ネットワーク機器の階層分類・管理システム</p>
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        <div className="sidebar-header">
+          <div className="app-logo">
+            <span className="logo-icon">🌐</span>
+            <span className="logo-text">Network Topology Manager</span>
+          </div>
         </div>
-      </header>
-
-      <main className="app-main">
-        <nav className="nav-tabs">
-          <button 
-            className={`nav-tab ${activeTab === 'classification' ? 'active' : ''}`}
-            onClick={() => setActiveTab('classification')}
-          >
-            🏷️ デバイス分類管理
-          </button>
-          <button 
-            className={`nav-tab ${activeTab === 'topology' ? 'active' : ''}`}
-            onClick={() => setActiveTab('topology')}
-          >
-            🗺️ 階層トポロジー
-          </button>
+        <nav className="sidebar-nav">
+          {navItems.map((section, sectionIndex) => (
+            <div key={sectionIndex} className="nav-section">
+              <h3>{section.section}</h3>
+              {section.items.map((item) => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
+                >
+                  <span className="nav-icon">{item.icon}</span>
+                  <span className="nav-label">{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          ))}
         </nav>
-        
-        <div className="tab-content">
-          {renderTabContent()}
-        </div>
-      </main>
+      </aside>
+
+      <div className="main-layout">
+        <header className="page-header">
+          <button 
+            className="sidebar-toggle"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          >
+            ☰
+          </button>
+          <h1 className="page-title">{getCurrentPageTitle()}</h1>
+        </header>
+
+        <main className="page-content">
+          <Routes>
+            <Route path="/" element={<ClassificationPage />} />
+            <Route path="/classification" element={<ClassificationPage />} />
+            <Route path="/hierarchy" element={<HierarchyPage />} />
+            <Route path="/topology" element={<TopologyPage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/status" element={<StatusPage />} />
+          </Routes>
+        </main>
+      </div>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
   )
 }
 

@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	_ "github.com/lib/pq"
-	"github.com/spf13/cobra"
 	"github.com/servak/topology-manager/internal/config"
+	"github.com/spf13/cobra"
 )
 
 var migrateCmd = &cobra.Command{
@@ -46,7 +46,7 @@ func runMigrate(cmd *cobra.Command, args []string) {
 		}
 	} else {
 		// 設定ファイルからDSNを構築
-		dsn = cfg.Database.Postgres.DSN()
+		dsn = cfg.Database.Postgres.BuildDSN()
 		if verbose {
 			log.Printf("Using database configuration from config file")
 		}

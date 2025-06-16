@@ -11,21 +11,20 @@ import (
 	"github.com/servak/topology-manager/internal/config"
 	"github.com/servak/topology-manager/internal/domain/topology"
 	"github.com/servak/topology-manager/internal/repository"
-	"github.com/servak/topology-manager/internal/repository/postgres"
 	"github.com/servak/topology-manager/internal/service"
 	"github.com/spf13/cobra"
 )
 
 var (
 	// Enhanced parameters
-	topologyType      string  // three-tier, spine-leaf, fat-tree, mixed
-	fatTreeScale      float64
-	spineLeafScale    float64 
-	threeTierScale    float64
-	targetDevices     int
-	dcLocation        string
-	locationDelimiter string
-	includeServers    bool
+	topologyType               string // three-tier, spine-leaf, fat-tree, mixed
+	fatTreeScale               float64
+	spineLeafScale             float64
+	threeTierScale             float64
+	targetDevices              int
+	dcLocation                 string
+	locationDelimiter          string
+	includeServers             bool
 	enableAutoClassifyEnhanced bool
 )
 
@@ -66,7 +65,7 @@ func newTopologyGenerator(dcLocation, delimiter string) *topologyGenerator {
 	if dcLocation != "" {
 		suffix = strings.ToUpper(dcLocation)
 	}
-	
+
 	return &topologyGenerator{
 		deviceCounter: 0,
 		linkCounter:   0,
@@ -142,7 +141,7 @@ func (g *topologyGenerator) generateThreeTierTopology(numCore, numAggPerCore, nu
 			g.generateDeviceID("core"),
 			"core",
 			"Arista DCS-7280SR-48C6",
-			1,
+			42, // Aggregation layer for 3-tier
 		)
 		devices = append(devices, device)
 		coreDevices = append(coreDevices, device)
@@ -156,11 +155,11 @@ func (g *topologyGenerator) generateThreeTierTopology(numCore, numAggPerCore, nu
 				g.generateDeviceID("agg"),
 				"aggregation",
 				"Juniper QFX5100-48S",
-				2,
+				42, // Aggregation layer for 3-tier
 			)
 			devices = append(devices, device)
 			aggDevices = append(aggDevices, device)
-			
+
 			// Agg to Core link
 			link := g.createLink(
 				device.ID, coreDevice.ID,
@@ -179,11 +178,11 @@ func (g *topologyGenerator) generateThreeTierTopology(numCore, numAggPerCore, nu
 				g.generateDeviceID("access"),
 				"access",
 				"Cisco Catalyst 2960X-48TS",
-				3,
+				43, // Access layer for 3-tier
 			)
 			devices = append(devices, device)
 			accessDevices = append(accessDevices, device)
-			
+
 			// Access to Agg link
 			link := g.createLink(
 				device.ID, aggDevice.ID,
@@ -203,10 +202,10 @@ func (g *topologyGenerator) generateThreeTierTopology(numCore, numAggPerCore, nu
 					g.generateDeviceID("server"),
 					"server",
 					"Dell PowerEdge R640",
-					4,
+					50, // Server layer
 				)
 				devices = append(devices, device)
-				
+
 				// Server to Access link
 				link := g.createLink(
 					accessDevice.ID, device.ID,
@@ -233,7 +232,7 @@ func (g *topologyGenerator) generateSpineLeafTopology(numSpines, numLeavesPerSpi
 			g.generateDeviceID("spine"),
 			"spine",
 			"Mellanox SN3700C",
-			1,
+			32, // Spine layer for Spine-Leaf
 		)
 		devices = append(devices, device)
 		spineDevices = append(spineDevices, device)
@@ -249,9 +248,9 @@ func (g *topologyGenerator) generateSpineLeafTopology(numSpines, numLeavesPerSpi
 	for i := 0; i < numLeaves; i++ {
 		device := g.createDevice(
 			g.generateDeviceID("leaf"),
-			"leaf", 
+			"leaf",
 			"Mellanox SN2700",
-			2,
+			41, // Leaf layer for Spine-Leaf
 		)
 		devices = append(devices, device)
 		leafDevices = append(leafDevices, device)
@@ -276,14 +275,14 @@ func (g *topologyGenerator) generateSpineLeafTopology(numSpines, numLeavesPerSpi
 					g.generateDeviceID("server"),
 					"server",
 					"HPE ProLiant DL380",
-					3,
+					50, // Server layer
 				)
 				devices = append(devices, device)
-				
+
 				// Server to Leaf link
 				link := g.createLink(
 					leafDevice.ID, device.ID,
-					fmt.Sprintf("swp%d", i+10), "ens1f0", 
+					fmt.Sprintf("swp%d", i+10), "ens1f0",
 					"L2_access_VXLAN", "25G", 2.0,
 				)
 				links = append(links, link)
@@ -294,7 +293,7 @@ func (g *topologyGenerator) generateSpineLeafTopology(numSpines, numLeavesPerSpi
 	return devices, links
 }
 
-// Fat-Tree Topology Generator  
+// Fat-Tree Topology Generator
 func (g *topologyGenerator) generateFatTreeTopology(coreSpines, aggSpinesPerCore, edgeLeavesPerAgg int, includeServers bool) ([]topology.Device, []topology.Link) {
 	var devices []topology.Device
 	var links []topology.Link
@@ -306,7 +305,7 @@ func (g *topologyGenerator) generateFatTreeTopology(coreSpines, aggSpinesPerCore
 			g.generateDeviceID("cs"),
 			"core_spine",
 			"Broadcom Tomahawk 4",
-			1,
+			30, // Core Spine layer for Fat-Tree
 		)
 		devices = append(devices, device)
 		coreSpineDevices = append(coreSpineDevices, device)
@@ -320,11 +319,11 @@ func (g *topologyGenerator) generateFatTreeTopology(coreSpines, aggSpinesPerCore
 				g.generateDeviceID("as"),
 				"agg_spine",
 				"Broadcom Trident 4",
-				2,
+				31, // Aggregation Spine layer for Fat-Tree
 			)
 			devices = append(devices, device)
 			aggSpineDevices = append(aggSpineDevices, device)
-			
+
 			// Agg Spine to Core Spine link
 			link := g.createLink(
 				device.ID, coreSpineDevice.ID,
@@ -343,11 +342,11 @@ func (g *topologyGenerator) generateFatTreeTopology(coreSpines, aggSpinesPerCore
 				g.generateDeviceID("el"),
 				"edge_leaf",
 				"Broadcom Trident 3",
-				3,
+				40, // Edge/Leaf layer for Fat-Tree
 			)
 			devices = append(devices, device)
 			edgeLeafDevices = append(edgeLeafDevices, device)
-			
+
 			// Edge Leaf to Agg Spine link
 			link := g.createLink(
 				device.ID, aggSpineDevice.ID,
@@ -367,10 +366,10 @@ func (g *topologyGenerator) generateFatTreeTopology(coreSpines, aggSpinesPerCore
 					g.generateDeviceID("server"),
 					"server",
 					"Supermicro SYS-2029U-TN24R4T",
-					4,
+					50, // Server layer
 				)
 				devices = append(devices, device)
-				
+
 				// Server to Edge Leaf link
 				link := g.createLink(
 					edgeLeafDevice.ID, device.ID,
@@ -398,7 +397,7 @@ func (g *topologyGenerator) generateMixedTopology(fatTreeScale, spineLeafScale, 
 			g.generateDeviceID("dccore"),
 			"dc_core_interconnect",
 			"Cisco NCS-5500",
-			0,
+			20, // DC Core Interconnect layer
 		)
 		allDevices = append(allDevices, device)
 		coreInterconnectDevices = append(coreInterconnectDevices, device)
@@ -412,11 +411,11 @@ func (g *topologyGenerator) generateMixedTopology(fatTreeScale, spineLeafScale, 
 			g.generateDeviceID("bl"),
 			"border_leaf",
 			"Arista 7280R3",
-			0,
+			10, // Border Router/Leaf layer
 		)
 		allDevices = append(allDevices, device)
 		borderLeafDevices = append(borderLeafDevices, device)
-		
+
 		// Border Leaf to Core Interconnect
 		if len(coreInterconnectDevices) > 0 {
 			coreDevice := coreInterconnectDevices[rand.Intn(len(coreInterconnectDevices))]
@@ -434,14 +433,14 @@ func (g *topologyGenerator) generateMixedTopology(fatTreeScale, spineLeafScale, 
 	if fatTreeScale > 0 && remainingDevices > 0 {
 		ftTargetDevices := int(float64(remainingDevices) * fatTreeScale)
 		ftDevices, ftLinks := g.generateFatTreeTopology(
-			maxInt(1, ftTargetDevices/200),  // core spines: ~0.5%
-			maxInt(1, ftTargetDevices/40),   // agg spines: ~2.5%
-			maxInt(1, ftTargetDevices/4),    // edge leaves: ~25%
+			maxInt(1, ftTargetDevices/200), // core spines: ~0.5%
+			maxInt(1, ftTargetDevices/40),  // agg spines: ~2.5%
+			maxInt(1, ftTargetDevices/4),   // edge leaves: ~25%
 			includeServers,
 		)
 		allDevices = append(allDevices, ftDevices...)
 		allLinks = append(allLinks, ftLinks...)
-		
+
 		// Connect Fat-Tree core spines to DC core
 		for _, device := range ftDevices {
 			if device.Type == "core_spine" && len(coreInterconnectDevices) > 0 {
@@ -461,13 +460,13 @@ func (g *topologyGenerator) generateMixedTopology(fatTreeScale, spineLeafScale, 
 	if spineLeafScale > 0 && remainingDevices > 0 {
 		slTargetDevices := int(float64(remainingDevices) * spineLeafScale / (spineLeafScale + threeTierScale))
 		slDevices, slLinks := g.generateSpineLeafTopology(
-			maxInt(1, slTargetDevices/50),  // spines: ~2%
-			maxInt(1, slTargetDevices/2),   // leaves: ~50%
+			maxInt(1, slTargetDevices/50), // spines: ~2%
+			maxInt(1, slTargetDevices/2),  // leaves: ~50%
 			includeServers,
 		)
 		allDevices = append(allDevices, slDevices...)
 		allLinks = append(allLinks, slLinks...)
-		
+
 		// Connect Spine-Leaf spines to DC core
 		for _, device := range slDevices {
 			if device.Type == "spine" && len(coreInterconnectDevices) > 0 {
@@ -487,14 +486,14 @@ func (g *topologyGenerator) generateMixedTopology(fatTreeScale, spineLeafScale, 
 	if threeTierScale > 0 && remainingDevices > 0 {
 		ttTargetDevices := remainingDevices // 残り全てをThree-Tierに配分
 		ttDevices, ttLinks := g.generateThreeTierTopology(
-			maxInt(1, ttTargetDevices/100),  // core: ~1%
-			maxInt(1, ttTargetDevices/20),   // agg: ~5%
-			maxInt(1, ttTargetDevices/5),    // access: ~20%
+			maxInt(1, ttTargetDevices/100), // core: ~1%
+			maxInt(1, ttTargetDevices/20),  // agg: ~5%
+			maxInt(1, ttTargetDevices/5),   // access: ~20%
 			includeServers,
 		)
 		allDevices = append(allDevices, ttDevices...)
 		allLinks = append(allLinks, ttLinks...)
-		
+
 		// Connect Three-Tier cores to DC core
 		for _, device := range ttDevices {
 			if device.Type == "core" && len(coreInterconnectDevices) > 0 {
@@ -517,7 +516,7 @@ func runSeedDataEnhanced(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	repo, err := repository.NewDatabase(&config.Database)
+	repo, err := repository.NewRepository(config.GetDatabaseConfig())
 	if err != nil {
 		log.Fatalf("Failed to create database: %v", err)
 	}
@@ -532,7 +531,7 @@ func runSeedDataEnhanced(cmd *cobra.Command, args []string) {
 	// Clear existing data if requested
 	if clearFirst {
 		log.Println("Clearing existing data...")
-		if err := clearData(ctx, repo); err != nil {
+		if err := repo.Clear(); err != nil {
 			log.Fatalf("Failed to clear data: %v", err)
 		}
 		log.Println("Existing data cleared")
@@ -540,17 +539,17 @@ func runSeedDataEnhanced(cmd *cobra.Command, args []string) {
 
 	// Initialize generator
 	generator := newTopologyGenerator(dcLocation, locationDelimiter)
-	
+
 	var devices []topology.Device
 	var links []topology.Link
 
 	// Generate topology based on type
 	log.Printf("Generating %s topology with %d target network infrastructure devices...", topologyType, targetDevices)
-	
+
 	switch topologyType {
 	case "three-tier":
 		// ネットワークインフラデバイスの構成比を調整
-		numCore := maxInt(1, targetDevices/100)       // core: ~1% 
+		numCore := maxInt(1, targetDevices/100)       // core: ~1%
 		numAggPerCore := maxInt(1, targetDevices/20)  // agg: ~5%
 		numAccessPerAgg := maxInt(1, targetDevices/5) // access: ~20%
 		devices, links = generator.generateThreeTierTopology(
@@ -559,7 +558,7 @@ func runSeedDataEnhanced(cmd *cobra.Command, args []string) {
 		)
 	case "spine-leaf":
 		// ネットワークインフラデバイスの構成比を調整
-		numSpines := maxInt(1, targetDevices/50)     // spines: ~2%
+		numSpines := maxInt(1, targetDevices/50)        // spines: ~2%
 		numLeavesPerSpine := maxInt(1, targetDevices/2) // leaves: ~50%
 		devices, links = generator.generateSpineLeafTopology(
 			numSpines, numLeavesPerSpine,
@@ -598,53 +597,47 @@ func runSeedDataEnhanced(cmd *cobra.Command, args []string) {
 	// Statistics
 	networkDevices := filterDevicesByNonServerTypes(devices)
 	serverDevices := filterDevicesByType(devices, "server")
-	
+
 	// 自動分類の実行
 	if enableAutoClassifyEnhanced {
 		log.Println("Applying auto-classification to enhanced seed devices...")
-		
-		// PostgreSQL specific implementation for classification repository
-		pgRepo, ok := repo.(*postgres.PostgresRepository)
-		if !ok {
-			log.Printf("Warning: Auto-classification requires PostgreSQL, got %T. Skipping classification.", repo)
+
+		// Repository includes both topology and classification interfaces
+		classificationService := service.NewClassificationService(repo, repo)
+
+		// Extract device IDs
+		deviceIDs := make([]string, len(devices))
+		for i, device := range devices {
+			deviceIDs[i] = device.ID
+		}
+
+		// Apply classification rules
+		classifications, err := classificationService.ApplyClassificationRules(ctx, deviceIDs)
+		if err != nil {
+			log.Printf("Auto-classification failed: %v", err)
 		} else {
-			classificationRepo := postgres.NewClassificationRepository(pgRepo.GetDB())
-			classificationService := service.NewClassificationService(classificationRepo, repo)
-			
-			// Extract device IDs
-			deviceIDs := make([]string, len(devices))
-			for i, device := range devices {
-				deviceIDs[i] = device.ID
-			}
-			
-			// Apply classification rules
-			classifications, err := classificationService.ApplyClassificationRules(ctx, deviceIDs)
-			if err != nil {
-				log.Printf("Auto-classification failed: %v", err)
-			} else {
-				if len(classifications) > 0 {
-					log.Printf("Successfully auto-classified %d devices:", len(classifications))
-					
-					// Group by device type for better readability
-					typeCount := make(map[string]int)
-					for _, c := range classifications {
-						typeCount[c.DeviceType]++
-						if len(classifications) <= 20 { // Only show details for small datasets
-							log.Printf("  - %s → Layer %d (%s)", c.DeviceID, c.Layer, c.DeviceType)
-						}
+			if len(classifications) > 0 {
+				log.Printf("Successfully auto-classified %d devices:", len(classifications))
+
+				// Group by device type for better readability
+				typeCount := make(map[string]int)
+				for _, c := range classifications {
+					typeCount[c.DeviceType]++
+					if len(classifications) <= 20 { // Only show details for small datasets
+						log.Printf("  - %s → Layer %d (%s)", c.DeviceID, c.Layer, c.DeviceType)
 					}
-					
-					// Show summary for large datasets
-					if len(classifications) > 20 {
-						log.Printf("Classification summary by type:")
-						for deviceType, count := range typeCount {
-							log.Printf("  - %s: %d devices", deviceType, count)
-						}
-					}
-				} else {
-					log.Printf("No devices matched existing classification rules (this is normal for initial setup)")
-					log.Printf("You can create classification rules in the web interface and then re-run with auto-classification")
 				}
+
+				// Show summary for large datasets
+				if len(classifications) > 20 {
+					log.Printf("Classification summary by type:")
+					for deviceType, count := range typeCount {
+						log.Printf("  - %s: %d devices", deviceType, count)
+					}
+				}
+			} else {
+				log.Printf("No devices matched existing classification rules (this is normal for initial setup)")
+				log.Printf("You can create classification rules in the web interface and then re-run with auto-classification")
 			}
 		}
 	}
@@ -658,7 +651,7 @@ func runSeedDataEnhanced(cmd *cobra.Command, args []string) {
 	if dcLocation != "" {
 		log.Printf("Datacenter location: %s", dcLocation)
 	}
-	
+
 	log.Println("Enhanced sample data generation completed successfully")
 }
 

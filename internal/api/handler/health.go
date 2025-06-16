@@ -6,10 +6,12 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/servak/topology-manager/internal/domain/topology"
+	"github.com/servak/topology-manager/pkg/logger"
 )
 
 type HealthHandler struct {
 	topologyRepo topology.Repository
+	logger       *logger.Logger
 }
 
 type HealthResponse struct {
@@ -18,9 +20,10 @@ type HealthResponse struct {
 	Database string `json:"database"`
 }
 
-func NewHealthHandler(topologyRepo topology.Repository) *HealthHandler {
+func NewHealthHandler(topologyRepo topology.Repository, appLogger *logger.Logger) *HealthHandler {
 	return &HealthHandler{
 		topologyRepo: topologyRepo,
+		logger:       appLogger.WithComponent("health_handler"),
 	}
 }
 
@@ -46,7 +49,7 @@ func (h *HealthHandler) HealthCheck(ctx context.Context, input *struct{}) (*stru
 		response.Status = "unhealthy"
 		response.Database = "unhealthy"
 		response.Message = "Database connection failed"
-		
+
 		return &struct {
 			Body HealthResponse
 		}{

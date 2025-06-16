@@ -7,15 +7,18 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/servak/topology-manager/internal/domain/visualization"
 	"github.com/servak/topology-manager/internal/service"
+	"github.com/servak/topology-manager/pkg/logger"
 )
 
 type VisualizationHandler struct {
 	visualizationService *service.VisualizationService
+	logger               *logger.Logger
 }
 
-func NewVisualizationHandler(visualizationService *service.VisualizationService) *VisualizationHandler {
+func NewVisualizationHandler(visualizationService *service.VisualizationService, appLogger *logger.Logger) *VisualizationHandler {
 	return &VisualizationHandler{
 		visualizationService: visualizationService,
+		logger:               appLogger.WithComponent("visualization_handler"),
 	}
 }
 
@@ -49,14 +52,14 @@ func (h *VisualizationHandler) Register(api huma.API) {
 }
 
 func (h *VisualizationHandler) GetTopology(ctx context.Context, input *struct {
-	DeviceID         string `path:"deviceId"`
-	Depth            int    `query:"depth" default:"3"`
-	EnableGrouping   bool   `query:"enable_grouping" default:"true"`
-	MinGroupSize     int    `query:"min_group_size" default:"3"`
-	MaxGroupDepth    int    `query:"max_group_depth" default:"2"`
-	GroupByPrefix    bool   `query:"group_by_prefix" default:"true"`
-	GroupByType      bool   `query:"group_by_type" default:"false"`
-	PrefixMinLen     int    `query:"prefix_min_len" default:"3"`
+	DeviceID       string `path:"deviceId"`
+	Depth          int    `query:"depth" default:"3"`
+	EnableGrouping bool   `query:"enable_grouping" default:"true"`
+	MinGroupSize   int    `query:"min_group_size" default:"3"`
+	MaxGroupDepth  int    `query:"max_group_depth" default:"2"`
+	GroupByPrefix  bool   `query:"group_by_prefix" default:"true"`
+	GroupByType    bool   `query:"group_by_type" default:"false"`
+	PrefixMinLen   int    `query:"prefix_min_len" default:"3"`
 }) (*struct {
 	Body visualization.VisualTopology
 }, error) {
@@ -102,15 +105,15 @@ func (h *VisualizationHandler) GetVisualTopology(ctx context.Context, input *str
 }
 
 func (h *VisualizationHandler) ExpandFromDevice(ctx context.Context, input *struct {
-	DeviceID         string `path:"deviceId"`
-	Depth            int    `query:"depth" default:"2"`
-	EnableGrouping   bool   `query:"enable_grouping" default:"true"`
-	MinGroupSize     int    `query:"min_group_size" default:"3"`
-	MaxGroupDepth    int    `query:"max_group_depth" default:"2"`
-	GroupByPrefix    bool   `query:"group_by_prefix" default:"true"`
-	GroupByType      bool   `query:"group_by_type" default:"false"`
-	GroupByDepth     bool   `query:"group_by_depth" default:"false"`
-	PrefixMinLen     int    `query:"prefix_min_len" default:"3"`
+	DeviceID       string `path:"deviceId"`
+	Depth          int    `query:"depth" default:"2"`
+	EnableGrouping bool   `query:"enable_grouping" default:"true"`
+	MinGroupSize   int    `query:"min_group_size" default:"3"`
+	MaxGroupDepth  int    `query:"max_group_depth" default:"2"`
+	GroupByPrefix  bool   `query:"group_by_prefix" default:"true"`
+	GroupByType    bool   `query:"group_by_type" default:"false"`
+	GroupByDepth   bool   `query:"group_by_depth" default:"false"`
+	PrefixMinLen   int    `query:"prefix_min_len" default:"3"`
 }) (*struct {
 	Body visualization.VisualTopology
 }, error) {

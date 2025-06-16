@@ -60,7 +60,7 @@ var configShowCmd = &cobra.Command{
 		}
 
 		// Mask sensitive information
-		if cfg.Database.Postgres != nil && cfg.Database.Postgres.Password != "" {
+		if cfg.Database.Postgres.Password != "" {
 			cfg.Database.Postgres.Password = "***"
 		}
 

@@ -9,11 +9,11 @@ func TestGroupByLongestCommonPrefix_Basic(t *testing.T) {
 	minGroupSize := 3
 
 	groups := GroupByLongestCommonPrefix(deviceNames, minGroupSize)
-	
+
 	t.Logf("Input: %v", deviceNames)
 	t.Logf("MinGroupSize: %d", minGroupSize)
 	t.Logf("Groups count: %d", len(groups))
-	
+
 	for i, group := range groups {
 		t.Logf("Group %d: prefix=%s, count=%d, devices=%v", i, group.Prefix, group.Count, group.DeviceIDs)
 	}
@@ -38,7 +38,7 @@ func TestGroupByLongestCommonPrefix_NotEnoughDevices(t *testing.T) {
 	minGroupSize := 3
 
 	groups := GroupByLongestCommonPrefix(deviceNames, minGroupSize)
-	
+
 	t.Logf("Input: %v", deviceNames)
 	t.Logf("MinGroupSize: %d", minGroupSize)
 	t.Logf("Groups count: %d", len(groups))
@@ -53,11 +53,11 @@ func TestGroupByLongestCommonPrefix_ExactMinimum(t *testing.T) {
 	minGroupSize := 3
 
 	groups := GroupByLongestCommonPrefix(deviceNames, minGroupSize)
-	
+
 	t.Logf("Input: %v", deviceNames)
 	t.Logf("MinGroupSize: %d", minGroupSize)
 	t.Logf("Groups count: %d", len(groups))
-	
+
 	for i, group := range groups {
 		t.Logf("Group %d: prefix=%s, count=%d, devices=%v", i, group.Prefix, group.Count, group.DeviceIDs)
 	}
@@ -83,7 +83,7 @@ func TestLongestCommonPrefix(t *testing.T) {
 	for _, test := range tests {
 		result := longestCommonPrefix(test.str1, test.str2)
 		if result != test.expected {
-			t.Errorf("longestCommonPrefix(%s, %s) = %s, expected %s", 
+			t.Errorf("longestCommonPrefix(%s, %s) = %s, expected %s",
 				test.str1, test.str2, result, test.expected)
 		}
 	}
@@ -104,7 +104,7 @@ func TestFindGroupPrefix(t *testing.T) {
 	for _, test := range tests {
 		result := findGroupPrefix(test.devices)
 		if result != test.expected {
-			t.Errorf("findGroupPrefix(%v) = %s, expected %s", 
+			t.Errorf("findGroupPrefix(%v) = %s, expected %s",
 				test.devices, result, test.expected)
 		}
 	}

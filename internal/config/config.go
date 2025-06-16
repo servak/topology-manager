@@ -10,22 +10,23 @@ import (
 	"github.com/servak/topology-manager/internal/prometheus"
 	"github.com/servak/topology-manager/internal/repository"
 	"github.com/servak/topology-manager/internal/repository/postgres"
+	"github.com/servak/topology-manager/internal/repository/sqlite"
 	"gopkg.in/yaml.v3"
 )
 
 // Config represents the main application configuration
 type Config struct {
-	Hierarchy  HierarchyConfig           `yaml:"hierarchy"`
-	Database   repository.DatabaseConfig `yaml:"database"`
-	Prometheus PrometheusConfig          `yaml:"prometheus"`
+	Hierarchy  HierarchyConfig   `yaml:"hierarchy"`
+	Database   repository.Config `yaml:"database"`
+	Prometheus PrometheusConfig  `yaml:"prometheus"`
 }
 
 // PrometheusConfig holds Prometheus configuration
 type PrometheusConfig struct {
-	URL             string                         `yaml:"url"`
-	Timeout         time.Duration                  `yaml:"timeout"`
-	MetricsMapping  map[string]prometheus.MetricConfigGroup   `yaml:"metrics_mapping"`
-	FieldRequirements map[string]prometheus.FieldRequirement `yaml:"field_requirements"`
+	URL               string                                  `yaml:"url"`
+	Timeout           time.Duration                           `yaml:"timeout"`
+	MetricsMapping    map[string]prometheus.MetricConfigGroup `yaml:"metrics_mapping"`
+	FieldRequirements map[string]prometheus.FieldRequirement  `yaml:"field_requirements"`
 }
 
 // HierarchyConfig holds device hierarchy configuration
@@ -94,15 +95,20 @@ func (c *Config) setDefaults() {
 
 	// Database defaults
 	if c.Database.Type == "" {
-		c.Database.Type = "postgres"
+		c.Database.Type = "sqlite"
 	}
-	if c.Database.Type == "postgres" && c.Database.Postgres == nil {
-		c.Database.Postgres = &postgres.PostgresConfig{
+	if c.Database.Type == "postgres" {
+		c.Database.Postgres = postgres.Config{
 			Host:    "localhost",
 			Port:    5432,
-			User:    "topology",
+			User:    "tm",
 			DBName:  "topology_manager",
 			SSLMode: "disable",
+		}
+	}
+	if c.Database.Type == "sqlite" {
+		c.Database.SQLite = sqlite.Config{
+			Path: "./topology.db",
 		}
 	}
 
@@ -127,15 +133,23 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate database
-	if err := c.Database.Validate(); err != nil {
-		return fmt.Errorf("database configuration error: %w", err)
+	switch c.Database.Type {
+	case "postgres":
+		if err := c.Database.Postgres.Validate(); err != nil {
+			return fmt.Errorf("postgres configuration error: %w", err)
+		}
+	case "sqlite":
+		if err := c.Database.SQLite.Validate(); err != nil {
+			return fmt.Errorf("sqlite configuration error: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported database type: %s", c.Database.Type)
 	}
 
 	// Validate Prometheus
 	if err := c.validatePrometheus(); err != nil {
 		return fmt.Errorf("prometheus configuration error: %w", err)
 	}
-
 
 	return nil
 }
@@ -148,23 +162,23 @@ func (c *Config) setDefaultMetricsMapping() {
 				Primary: prometheus.MetricMapping{
 					MetricName: "snmp_device_info",
 					Labels: map[string]string{
-						"device_id":  "instance",
-						"hardware":   "sysDescr",
+						"device_id": "instance",
+						"hardware":  "sysDescr",
 					},
 				},
 				Fallbacks: []prometheus.MetricMapping{
 					{
 						MetricName: "node_uname_info",
 						Labels: map[string]string{
-							"device_id":  "instance",
-							"hardware":   "machine",
+							"device_id": "instance",
+							"hardware":  "machine",
 						},
 					},
 					{
 						MetricName: "lldp_local_info",
 						Labels: map[string]string{
-							"device_id":  "chassis_id",
-							"hardware":   "system_description",
+							"device_id": "chassis_id",
+							"hardware":  "system_description",
 						},
 					},
 				},
@@ -253,14 +267,16 @@ func (c *Config) validateHierarchy() error {
 // expandEnvironmentVariables expands environment variables in configuration values
 func (c *Config) expandEnvironmentVariables() {
 	// Expand database configuration
-	if c.Database.Postgres != nil {
+	if c.Database.Type == "postgres" {
 		c.Database.Postgres.Host = expandEnvVar(c.Database.Postgres.Host)
 		c.Database.Postgres.User = expandEnvVar(c.Database.Postgres.User)
 		c.Database.Postgres.Password = expandEnvVar(c.Database.Postgres.Password)
 		c.Database.Postgres.DBName = expandEnvVar(c.Database.Postgres.DBName)
 		c.Database.Postgres.SSLMode = expandEnvVar(c.Database.Postgres.SSLMode)
 	}
-
+	if c.Database.Type == "sqlite" {
+		c.Database.SQLite.Path = expandEnvVar(c.Database.SQLite.Path)
+	}
 
 	// Expand Prometheus configuration
 	c.Prometheus.URL = expandEnvVar(c.Prometheus.URL)
@@ -358,6 +374,10 @@ func (c *Config) validatePrometheus() error {
 	return nil
 }
 
+// GetDatabaseConfig returns database repository configuration
+func (c *Config) GetDatabaseConfig() repository.Config {
+	return c.Database
+}
 
 // GetPrometheusConfig returns Prometheus client configuration
 func (c *Config) GetPrometheusConfig() prometheus.Config {

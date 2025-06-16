@@ -29,8 +29,8 @@ type FieldRequirement struct {
 
 // MetricsConfig holds metrics mapping configuration
 type MetricsConfig struct {
-	MetricsMapping    map[string]MetricConfigGroup   `yaml:"metrics_mapping"`
-	FieldRequirements map[string]FieldRequirement   `yaml:"field_requirements"`
+	MetricsMapping    map[string]MetricConfigGroup `yaml:"metrics_mapping"`
+	FieldRequirements map[string]FieldRequirement  `yaml:"field_requirements"`
 }
 
 // MetricsExtractor extracts network topology data from Prometheus metrics
@@ -110,7 +110,7 @@ func (e *MetricsExtractor) ExtractLinks(ctx context.Context) ([]topology.Link, [
 // tryExtractDevices attempts to extract devices from a specific metric configuration
 func (e *MetricsExtractor) tryExtractDevices(ctx context.Context, mapping MetricMapping, configKey string) ([]topology.Device, error) {
 	query := fmt.Sprintf(`{__name__="%s"}`, mapping.MetricName)
-	
+
 	result, err := e.client.Query(ctx, query, time.Time{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query metric '%s': %w", mapping.MetricName, err)
@@ -158,7 +158,7 @@ func (e *MetricsExtractor) tryExtractDevices(ctx context.Context, mapping Metric
 // tryExtractLinks attempts to extract links from a specific metric configuration
 func (e *MetricsExtractor) tryExtractLinks(ctx context.Context, mapping MetricMapping, configKey string) ([]topology.Link, error) {
 	query := fmt.Sprintf(`{__name__="%s"}`, mapping.MetricName)
-	
+
 	result, err := e.client.Query(ctx, query, time.Time{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query metric '%s': %w", mapping.MetricName, err)

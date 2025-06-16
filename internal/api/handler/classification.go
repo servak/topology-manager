@@ -7,15 +7,18 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/servak/topology-manager/internal/domain/classification"
 	"github.com/servak/topology-manager/internal/service"
+	"github.com/servak/topology-manager/pkg/logger"
 )
 
 type ClassificationHandler struct {
 	classificationService *service.ClassificationService
+	logger                *logger.Logger
 }
 
-func NewClassificationHandler(classificationService *service.ClassificationService) *ClassificationHandler {
+func NewClassificationHandler(classificationService *service.ClassificationService, appLogger *logger.Logger) *ClassificationHandler {
 	return &ClassificationHandler{
 		classificationService: classificationService,
+		logger:                appLogger.WithComponent("classification_handler"),
 	}
 }
 
@@ -43,37 +46,37 @@ type UnclassifiedDevicesResponse struct {
 }
 
 type UnclassifiedDevice struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	Hardware  string `json:"hardware"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Hardware string `json:"hardware"`
 }
 
 // Request/Response types for classification rules
 type CreateRuleRequest struct {
 	Body struct {
-		Name          string                          `json:"name" doc:"Rule name"`
-		Description   string                          `json:"description" doc:"Rule description"`
-		LogicOperator string                          `json:"logic" doc:"Logic operator for multiple conditions (AND, OR)" default:"AND"`
+		Name          string                         `json:"name" doc:"Rule name"`
+		Description   string                         `json:"description" doc:"Rule description"`
+		LogicOperator string                         `json:"logic" doc:"Logic operator for multiple conditions (AND, OR)" default:"AND"`
 		Conditions    []classification.RuleCondition `json:"conditions" doc:"Multiple conditions for the rule"`
-		Layer         int                             `json:"layer" doc:"Target layer"`
-		DeviceType    string                          `json:"device_type" doc:"Target device type"`
-		Priority      int                             `json:"priority" doc:"Rule priority (higher = applied first)"`
-		IsActive      bool                            `json:"is_active" doc:"Whether rule is active"`
+		Layer         int                            `json:"layer" doc:"Target layer"`
+		DeviceType    string                         `json:"device_type" doc:"Target device type"`
+		Priority      int                            `json:"priority" doc:"Rule priority (higher = applied first)"`
+		IsActive      bool                           `json:"is_active" doc:"Whether rule is active"`
 	}
 }
 
 type UpdateRuleRequest struct {
 	RuleID string `path:"rule_id" doc:"Rule ID"`
 	Body   struct {
-		Name          string                          `json:"name" doc:"Rule name"`
-		Description   string                          `json:"description" doc:"Rule description"`
-		LogicOperator string                          `json:"logic" doc:"Logic operator for multiple conditions (AND, OR)" default:"AND"`
+		Name          string                         `json:"name" doc:"Rule name"`
+		Description   string                         `json:"description" doc:"Rule description"`
+		LogicOperator string                         `json:"logic" doc:"Logic operator for multiple conditions (AND, OR)" default:"AND"`
 		Conditions    []classification.RuleCondition `json:"conditions" doc:"Multiple conditions for the rule"`
-		Layer         int                             `json:"layer" doc:"Target layer"`
-		DeviceType    string                          `json:"device_type" doc:"Target device type"`
-		Priority      int                             `json:"priority" doc:"Rule priority (higher = applied first)"`
-		IsActive      bool                            `json:"is_active" doc:"Whether rule is active"`
+		Layer         int                            `json:"layer" doc:"Target layer"`
+		DeviceType    string                         `json:"device_type" doc:"Target device type"`
+		Priority      int                            `json:"priority" doc:"Rule priority (higher = applied first)"`
+		IsActive      bool                           `json:"is_active" doc:"Whether rule is active"`
 	}
 }
 
@@ -99,7 +102,7 @@ type DeviceClassificationsResponse struct {
 type ClassificationSuggestionsResponse struct {
 	Body struct {
 		Suggestions []classification.ClassificationSuggestion `json:"suggestions"`
-		Count       int                                        `json:"count"`
+		Count       int                                       `json:"count"`
 	}
 }
 
@@ -367,10 +370,10 @@ func (h *ClassificationHandler) ListUnclassifiedDevices(ctx context.Context, req
 	unclassifiedDevices := make([]UnclassifiedDevice, len(devices))
 	for i, device := range devices {
 		unclassifiedDevices[i] = UnclassifiedDevice{
-			ID:        device.ID,
-			Name:      device.ID, // DeviceにNameがないため、IDを使用
-			Type:      device.Type,
-			Hardware:  device.Hardware,
+			ID:       device.ID,
+			Name:     device.ID, // DeviceにNameがないため、IDを使用
+			Type:     device.Type,
+			Hardware: device.Hardware,
 		}
 	}
 
@@ -552,7 +555,7 @@ func (h *ClassificationHandler) GenerateRuleSuggestions(ctx context.Context, req
 	return &ClassificationSuggestionsResponse{
 		Body: struct {
 			Suggestions []classification.ClassificationSuggestion `json:"suggestions"`
-			Count       int                                        `json:"count"`
+			Count       int                                       `json:"count"`
 		}{
 			Suggestions: suggestions,
 			Count:       len(suggestions),
@@ -569,7 +572,7 @@ func (h *ClassificationHandler) ListRuleSuggestions(ctx context.Context, req *st
 	return &ClassificationSuggestionsResponse{
 		Body: struct {
 			Suggestions []classification.ClassificationSuggestion `json:"suggestions"`
-			Count       int                                        `json:"count"`
+			Count       int                                       `json:"count"`
 		}{
 			Suggestions: suggestions,
 			Count:       len(suggestions),
@@ -604,8 +607,10 @@ func (h *ClassificationHandler) HandleSuggestion(ctx context.Context, req *struc
 // Hierarchy layers handlers
 
 func (h *ClassificationHandler) ListHierarchyLayers(ctx context.Context, req *struct{}) (*HierarchyLayersResponse, error) {
+	h.logger.Info("Listing hierarchy layers")
 	layers, err := h.classificationService.ListHierarchyLayers(ctx)
 	if err != nil {
+		h.logger.Error("Failed to list hierarchy layers", "error", err)
 		return nil, huma.Error500InternalServerError("Failed to list hierarchy layers", err)
 	}
 

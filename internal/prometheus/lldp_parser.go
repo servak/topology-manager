@@ -25,25 +25,25 @@ func NewLLDPParser(client *Client) *LLDPParser {
 
 // LLDPNeighbor represents LLDP neighbor information
 type LLDPNeighbor struct {
-	LocalDevice    string
-	LocalPort      string
-	RemoteChassisID string
-	RemotePortID   string
+	LocalDevice      string
+	LocalPort        string
+	RemoteChassisID  string
+	RemotePortID     string
 	RemoteSystemName string
 	RemoteSystemDesc string
-	RemotePortDesc string
-	LastSeen       time.Time
+	RemotePortDesc   string
+	LastSeen         time.Time
 }
 
 // DeviceInfo represents device information from SNMP/other sources
 type DeviceInfo struct {
-	DeviceID     string
-	Hostname     string
-	SystemDesc   string
-	Location     string
-	Contact      string
-	Uptime       time.Duration
-	LastSeen     time.Time
+	DeviceID   string
+	Hostname   string
+	SystemDesc string
+	Location   string
+	Contact    string
+	Uptime     time.Duration
+	LastSeen   time.Time
 }
 
 // ParseLLDPNeighbors parses LLDP neighbor information from Prometheus
@@ -200,7 +200,7 @@ func (p *LLDPParser) BuildTopologyFromLLDP(ctx context.Context) ([]topology.Devi
 			TargetPort: p.normalizePortName(neighbor.RemotePortID),
 			Weight:     1.0,
 			Metadata: map[string]string{
-				"discovery_method": "lldp",
+				"discovery_method":  "lldp",
 				"remote_chassis_id": neighbor.RemoteChassisID,
 				"remote_port_desc":  neighbor.RemotePortDesc,
 			},
@@ -296,11 +296,11 @@ func (p *LLDPParser) createDeviceFromInfo(deviceID, identifier string, deviceMap
 func (p *LLDPParser) normalizeChassisID(chassisID string) string {
 	// Remove common prefixes and clean up chassis ID
 	chassisID = strings.TrimSpace(chassisID)
-	
+
 	// Remove MAC address formatting
 	chassisID = strings.ReplaceAll(chassisID, ":", "")
 	chassisID = strings.ReplaceAll(chassisID, "-", "")
-	
+
 	// Convert to lowercase
 	return strings.ToLower(chassisID)
 }
@@ -312,13 +312,13 @@ func (p *LLDPParser) normalizePortName(portName string) string {
 
 	// Common port name normalizations
 	portName = strings.TrimSpace(portName)
-	
+
 	// Handle common variations
 	patterns := map[string]string{
-		`^GigabitEthernet(\d+/\d+)$`:     "Gi$1",
-		`^TenGigabitEthernet(\d+/\d+)$`:  "Te$1",
-		`^FastEthernet(\d+/\d+)$`:        "Fa$1",
-		`^Ethernet(\d+/\d+)$`:            "Eth$1",
+		`^GigabitEthernet(\d+/\d+)$`:    "Gi$1",
+		`^TenGigabitEthernet(\d+/\d+)$`: "Te$1",
+		`^FastEthernet(\d+/\d+)$`:       "Fa$1",
+		`^Ethernet(\d+/\d+)$`:           "Eth$1",
 	}
 
 	for pattern, replacement := range patterns {

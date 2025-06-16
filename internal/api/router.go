@@ -3,6 +3,9 @@ package api
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -13,6 +16,7 @@ import (
 	"github.com/servak/topology-manager/internal/domain/classification"
 	"github.com/servak/topology-manager/internal/domain/topology"
 	"github.com/servak/topology-manager/internal/service"
+	"github.com/servak/topology-manager/pkg/logger"
 )
 
 type Server struct {
@@ -23,9 +27,10 @@ type Server struct {
 	classificationService *service.ClassificationService
 	topologyRepo          topology.Repository
 	classificationRepo    classification.Repository
+	logger                *logger.Logger
 }
 
-func NewServer(topologyRepo topology.Repository, classificationRepo classification.Repository) *Server {
+func NewServer(topologyRepo topology.Repository, classificationRepo classification.Repository, appLogger *logger.Logger) *Server {
 	router := chi.NewRouter()
 
 	// ミドルウェア
@@ -53,6 +58,7 @@ func NewServer(topologyRepo topology.Repository, classificationRepo classificati
 		classificationService: classificationService,
 		topologyRepo:          topologyRepo,
 		classificationRepo:    classificationRepo,
+		logger:                appLogger,
 	}
 
 	server.registerRoutes()
@@ -62,10 +68,10 @@ func NewServer(topologyRepo topology.Repository, classificationRepo classificati
 
 func (s *Server) registerRoutes() {
 	// ハンドラーの初期化
-	topologyHandler := handler.NewTopologyHandler(s.topologyService)
-	visualizationHandler := handler.NewVisualizationHandler(s.visualizationService)
-	classificationHandler := handler.NewClassificationHandler(s.classificationService)
-	healthHandler := handler.NewHealthHandler(s.topologyRepo)
+	topologyHandler := handler.NewTopologyHandler(s.topologyService, s.logger)
+	visualizationHandler := handler.NewVisualizationHandler(s.visualizationService, s.logger)
+	classificationHandler := handler.NewClassificationHandler(s.classificationService, s.logger)
+	healthHandler := handler.NewHealthHandler(s.topologyRepo, s.logger)
 
 	// ルート登録
 	topologyHandler.Register(s.api)
@@ -73,8 +79,59 @@ func (s *Server) registerRoutes() {
 	classificationHandler.RegisterRoutes(s.api)
 	healthHandler.Register(s.api)
 
-	// 静的ファイル配信（Web UI）
-	s.router.Handle("/*", http.FileServer(http.Dir("./web/build/")))
+	// 静的ファイル配信（Web UI）- SPAルーティング対応
+	s.setupSPARouting()
+}
+
+// setupSPARouting configures routing for Single Page Application
+func (s *Server) setupSPARouting() {
+	// 静的ファイルのディレクトリ
+	staticDir := "./web/build"
+	
+	// アセットファイル（CSS, JS, images等）を直接配信
+	s.router.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(filepath.Join(staticDir, "assets")))))
+	
+	// Vite用の特別なファイル（存在する場合）
+	s.router.HandleFunc("/vite.svg", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(staticDir, "vite.svg"))
+	})
+	
+	// APIルート以外のすべてのルートをSPAのindex.htmlにフォールバック
+	s.router.NotFound(s.spaHandler(staticDir))
+}
+
+// spaHandler returns a handler that serves the SPA's index.html for non-API routes
+func (s *Server) spaHandler(staticDir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// API endpoints should not be handled by SPA
+		if strings.HasPrefix(r.URL.Path, "/api/") || 
+		   strings.HasPrefix(r.URL.Path, "/docs") ||
+		   strings.HasPrefix(r.URL.Path, "/schemas") {
+			http.NotFound(w, r)
+			return
+		}
+		
+		// 静的ファイルが存在するかチェック
+		filePath := filepath.Join(staticDir, r.URL.Path)
+		if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
+			// ファイルが存在する場合は直接配信
+			http.ServeFile(w, r, filePath)
+			return
+		}
+		
+		// SPA のルートの場合は index.html を配信
+		indexPath := filepath.Join(staticDir, "index.html")
+		if _, err := os.Stat(indexPath); err != nil {
+			// index.html が存在しない場合
+			s.logger.Error("index.html not found", "path", indexPath)
+			http.NotFound(w, r)
+			return
+		}
+		
+		// Content-Type を設定
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		http.ServeFile(w, r, indexPath)
+	}
 }
 
 func (s *Server) Handler() http.Handler {

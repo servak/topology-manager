@@ -8,7 +8,7 @@ type Device struct {
 	ID           string            `json:"id" db:"id"`
 	Type         string            `json:"type" db:"type"`
 	Hardware     string            `json:"hardware" db:"hardware"`
-	LayerID      *int              `json:"layer_id" db:"layer_id"`        // NULL許可
+	LayerID      *int              `json:"layer_id" db:"layer_id"` // NULL許可
 	DeviceType   string            `json:"device_type" db:"device_type"`
 	ClassifiedBy string            `json:"classified_by" db:"classified_by"`
 	Metadata     map[string]string `json:"metadata" db:"metadata"`
@@ -74,10 +74,10 @@ type PaginationOptions struct {
 }
 
 type PaginationResult struct {
-	Page       int `json:"page"`
-	PageSize   int `json:"page_size"`
-	TotalCount int `json:"total_count"`
-	TotalPages int `json:"total_pages"`
+	Page       int  `json:"page"`
+	PageSize   int  `json:"page_size"`
+	TotalCount int  `json:"total_count"`
+	TotalPages int  `json:"total_pages"`
 	HasNext    bool `json:"has_next"`
 	HasPrev    bool `json:"has_prev"`
 }

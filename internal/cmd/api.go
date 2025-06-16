@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,7 +11,7 @@ import (
 	"github.com/servak/topology-manager/internal/api"
 	"github.com/servak/topology-manager/internal/config"
 	"github.com/servak/topology-manager/internal/repository"
-	"github.com/servak/topology-manager/internal/repository/postgres"
+	"github.com/servak/topology-manager/pkg/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -32,30 +31,32 @@ func init() {
 }
 
 func runAPI(cmd *cobra.Command, args []string) {
+	// ログシステムの初期化
+	logLevel := "info"
+	if verbose {
+		logLevel = "debug"
+	}
+	appLogger := logger.New(logLevel)
+
 	// PostgreSQL DSN を環境変数から取得
 	config, err := config.LoadConfig(configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		appLogger.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
-	repo, err := repository.NewDatabase(&config.Database)
+	
+	repo, err := repository.NewRepository(config.GetDatabaseConfig())
 	if err != nil {
-		log.Fatalf("Failed to create database: %v", err)
+		appLogger.Error("Failed to create database", "error", err)
+		os.Exit(1)
 	}
 	defer repo.Close()
 
-	if verbose {
-		log.Println("Connected to PostgreSQL")
-	}
+	appLogger.Info("Connected to PostgreSQL")
 
-	// PostgreSQL specific implementation
-	pgRepo, ok := repo.(*postgres.PostgresRepository)
-	if !ok {
-		log.Fatalf("Classification repository requires PostgreSQL, got %T", repo)
-	}
-	
-	classificationRepo := postgres.NewClassificationRepository(pgRepo.GetDB())
+	// Repository includes both topology and classification interfaces
 	// APIサーバーの初期化
-	server := api.NewServer(repo, classificationRepo)
+	server := api.NewServer(repo, repo, appLogger)
 
 	// HTTPサーバーの設定
 	httpServer := &http.Server{
@@ -65,9 +66,10 @@ func runAPI(cmd *cobra.Command, args []string) {
 
 	// サーバーの開始
 	go func() {
-		log.Printf("Starting API server on port %s", apiPort)
+		appLogger.Info("Starting API server", "port", apiPort)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+			appLogger.Error("Failed to start server", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -76,19 +78,19 @@ func runAPI(cmd *cobra.Command, args []string) {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("Shutting down server...")
+	appLogger.Info("Shutting down server...")
 
 	// グレースフルシャットダウン
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+		appLogger.Error("Server shutdown error", "error", err)
 	}
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Printf("Application shutdown error: %v", err)
+		appLogger.Error("Application shutdown error", "error", err)
 	}
 
-	log.Println("API server stopped")
+	appLogger.Info("API server stopped")
 }

@@ -57,13 +57,25 @@ func (m *MockTopologyRepository) GetDeviceLinks(ctx context.Context, deviceID st
 }
 
 // 他の必要なメソッドもモック実装（簡略化）
-func (m *MockTopologyRepository) SearchDevices(ctx context.Context, query string, limit int) ([]topology.Device, error) { return nil, nil }
-func (m *MockTopologyRepository) UpdateDevice(ctx context.Context, device topology.Device) error { return nil }
-func (m *MockTopologyRepository) FindReachableDevices(ctx context.Context, deviceID string, opts topology.ReachabilityOptions) ([]topology.Device, error) { return nil, nil }
-func (m *MockTopologyRepository) FindShortestPath(ctx context.Context, fromID, toID string, opts topology.PathOptions) (*topology.Path, error) { return nil, nil }
-func (m *MockTopologyRepository) BulkAddDevices(ctx context.Context, devices []topology.Device) error { return nil }
-func (m *MockTopologyRepository) BulkAddLinks(ctx context.Context, links []topology.Link) error { return nil }
-func (m *MockTopologyRepository) Close() error { return nil }
+func (m *MockTopologyRepository) SearchDevices(ctx context.Context, query string, limit int) ([]topology.Device, error) {
+	return nil, nil
+}
+func (m *MockTopologyRepository) UpdateDevice(ctx context.Context, device topology.Device) error {
+	return nil
+}
+func (m *MockTopologyRepository) FindReachableDevices(ctx context.Context, deviceID string, opts topology.ReachabilityOptions) ([]topology.Device, error) {
+	return nil, nil
+}
+func (m *MockTopologyRepository) FindShortestPath(ctx context.Context, fromID, toID string, opts topology.PathOptions) (*topology.Path, error) {
+	return nil, nil
+}
+func (m *MockTopologyRepository) BulkAddDevices(ctx context.Context, devices []topology.Device) error {
+	return nil
+}
+func (m *MockTopologyRepository) BulkAddLinks(ctx context.Context, links []topology.Link) error {
+	return nil
+}
+func (m *MockTopologyRepository) Close() error                     { return nil }
 func (m *MockTopologyRepository) Health(ctx context.Context) error { return nil }
 
 // createTestTopology はテスト用のトポロジーを作成
@@ -98,7 +110,7 @@ func createTestTopology() *MockTopologyRepository {
 
 	repo.AddDevice(&topology.Device{
 		ID:       "dist-101",
-		Type:     "distribution", 
+		Type:     "distribution",
 		Hardware: "Juniper QFX5100",
 		Status:   "up",
 		Layer:    4,
@@ -107,7 +119,7 @@ func createTestTopology() *MockTopologyRepository {
 	repo.AddDevice(&topology.Device{
 		ID:       "dist-102",
 		Type:     "distribution",
-		Hardware: "Juniper QFX5100", 
+		Hardware: "Juniper QFX5100",
 		Status:   "up",
 		Layer:    4,
 	})
@@ -125,7 +137,7 @@ func createTestTopology() *MockTopologyRepository {
 		ID:       "access-002",
 		Type:     "access",
 		Hardware: "Cisco 2960X",
-		Status:   "up", 
+		Status:   "up",
 		Layer:    5,
 	})
 
@@ -160,7 +172,7 @@ func createTestTopology() *MockTopologyRepository {
 
 	repo.AddLink(topology.Link{
 		ID:         "core-001_dist-101",
-		SourceID:   "core-001", 
+		SourceID:   "core-001",
 		TargetID:   "dist-101",
 		SourcePort: "Ethernet1/3",
 		TargetPort: "et-0/0/0",
@@ -171,7 +183,7 @@ func createTestTopology() *MockTopologyRepository {
 	repo.AddLink(topology.Link{
 		ID:         "core-001_dist-102",
 		SourceID:   "core-001",
-		TargetID:   "dist-102", 
+		TargetID:   "dist-102",
 		SourcePort: "Ethernet1/4",
 		TargetPort: "et-0/0/0",
 		Status:     "up",
@@ -189,7 +201,7 @@ func createTestTopology() *MockTopologyRepository {
 	})
 
 	repo.AddLink(topology.Link{
-		ID:         "dist-101_access-002", 
+		ID:         "dist-101_access-002",
 		SourceID:   "dist-101",
 		TargetID:   "access-002",
 		SourcePort: "et-0/0/1",
@@ -202,7 +214,7 @@ func createTestTopology() *MockTopologyRepository {
 		ID:         "dist-102_access-003",
 		SourceID:   "dist-102",
 		TargetID:   "access-003",
-		SourcePort: "et-0/0/1", 
+		SourcePort: "et-0/0/1",
 		TargetPort: "GigabitEthernet0/1",
 		Status:     "up",
 		Weight:     1.0,
@@ -269,7 +281,7 @@ func TestGetVisualTopologyWithGrouping_Basic(t *testing.T) {
 		// ソースまたはターゲットがグループノードの場合
 		sourceIsGroup := false
 		targetIsGroup := false
-		
+
 		for _, node := range result.Nodes {
 			if node.Type == "group" {
 				if edge.Source == node.ID {
@@ -280,7 +292,7 @@ func TestGetVisualTopologyWithGrouping_Basic(t *testing.T) {
 				}
 			}
 		}
-		
+
 		if sourceIsGroup || targetIsGroup {
 			groupEdgeCount++
 			t.Logf("Group edge found: %s -> %s", edge.Source, edge.Target)
@@ -342,7 +354,7 @@ func TestCalculateDeviceDepths(t *testing.T) {
 	expectedDepths := map[string]int{
 		"core-001":   0, // ルート
 		"core-002":   1, // 1ホップ
-		"dist-100":   1, // 1ホップ 
+		"dist-100":   1, // 1ホップ
 		"dist-101":   1, // 1ホップ
 		"dist-102":   1, // 1ホップ
 		"access-001": 2, // 2ホップ
@@ -396,7 +408,7 @@ func TestGroupEdgeCreation(t *testing.T) {
 
 	t.Logf("\n=== Groups ===")
 	for _, group := range result.Groups {
-		t.Logf("Group: %s (prefix: %s, count: %d, devices: %v)", 
+		t.Logf("Group: %s (prefix: %s, count: %d, devices: %v)",
 			group.ID, group.Prefix, group.Count, group.DeviceIDs)
 	}
 

@@ -9,14 +9,13 @@ import (
 	"github.com/servak/topology-manager/internal/config"
 	"github.com/servak/topology-manager/internal/domain/topology"
 	"github.com/servak/topology-manager/internal/repository"
-	"github.com/servak/topology-manager/internal/repository/postgres"
 	"github.com/servak/topology-manager/internal/service"
 	"github.com/spf13/cobra"
 )
 
 var (
-	deviceCount          int
-	clearFirst           bool
+	deviceCount            int
+	clearFirst             bool
 	enableAutoClassifySeed bool
 )
 
@@ -38,7 +37,7 @@ func runSeedData(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	repo, err := repository.NewDatabase(&config.Database)
+	repo, err := repository.NewRepository(config.Database)
 	if err != nil {
 		log.Fatalf("Failed to create database: %v", err)
 	}
@@ -53,7 +52,7 @@ func runSeedData(cmd *cobra.Command, args []string) {
 	// 既存データのクリア（オプション）
 	if clearFirst {
 		log.Println("Clearing existing data...")
-		if err := clearData(ctx, repo); err != nil {
+		if err := repo.Clear(); err != nil {
 			log.Fatalf("Failed to clear data: %v", err)
 		}
 		log.Println("Existing data cleared")
@@ -79,58 +78,34 @@ func runSeedData(cmd *cobra.Command, args []string) {
 	// 自動分類の実行
 	if enableAutoClassifySeed {
 		log.Println("Applying auto-classification to seed devices...")
-		
+
 		// PostgreSQL specific implementation for classification repository
-		pgRepo, ok := repo.(*postgres.PostgresRepository)
-		if !ok {
-			log.Printf("Warning: Auto-classification requires PostgreSQL, got %T. Skipping classification.", repo)
+		classificationService := service.NewClassificationService(repo, repo)
+
+		// Extract device IDs
+		deviceIDs := make([]string, len(devices))
+		for i, device := range devices {
+			deviceIDs[i] = device.ID
+		}
+
+		// Apply classification rules
+		classifications, err := classificationService.ApplyClassificationRules(ctx, deviceIDs)
+		if err != nil {
+			log.Printf("Auto-classification failed: %v", err)
 		} else {
-			classificationRepo := postgres.NewClassificationRepository(pgRepo.GetDB())
-			classificationService := service.NewClassificationService(classificationRepo, repo)
-			
-			// Extract device IDs
-			deviceIDs := make([]string, len(devices))
-			for i, device := range devices {
-				deviceIDs[i] = device.ID
-			}
-			
-			// Apply classification rules
-			classifications, err := classificationService.ApplyClassificationRules(ctx, deviceIDs)
-			if err != nil {
-				log.Printf("Auto-classification failed: %v", err)
-			} else {
-				if len(classifications) > 0 {
-					log.Printf("Successfully auto-classified %d devices:", len(classifications))
-					for _, c := range classifications {
-						log.Printf("  - %s → Layer %d (%s)", c.DeviceID, c.Layer, c.DeviceType)
-					}
-				} else {
-					log.Printf("No devices matched existing classification rules (this is normal for initial setup)")
-					log.Printf("You can create classification rules in the web interface and then re-run with auto-classification")
+			if len(classifications) > 0 {
+				log.Printf("Successfully auto-classified %d devices:", len(classifications))
+				for _, c := range classifications {
+					log.Printf("  - %s → Layer %d (%s)", c.DeviceID, c.Layer, c.DeviceType)
 				}
+			} else {
+				log.Printf("No devices matched existing classification rules (this is normal for initial setup)")
+				log.Printf("You can create classification rules in the web interface and then re-run with auto-classification")
 			}
 		}
 	}
 
 	log.Println("Sample data generation completed successfully")
-}
-
-func clearData(ctx context.Context, repo topology.Repository) error {
-	// PostgreSQL専用の実装
-	if pgRepo, ok := repo.(*postgres.PostgresRepository); ok {
-		// リンクを先に削除（外部キー制約のため）
-		if _, err := pgRepo.DB().ExecContext(ctx, "DELETE FROM links"); err != nil {
-			return fmt.Errorf("failed to clear links: %w", err)
-		}
-
-		if _, err := pgRepo.DB().ExecContext(ctx, "DELETE FROM devices"); err != nil {
-			return fmt.Errorf("failed to clear devices: %w", err)
-		}
-	} else {
-		return fmt.Errorf("clear data is only supported for PostgreSQL repositories")
-	}
-
-	return nil
 }
 
 func generateSampleData(count int) ([]topology.Device, []topology.Link) {
@@ -149,7 +124,7 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 		// Border Layer
 		{"border", "unknown", 99, "Cisco ASR 9000"},
 		{"edge", "unknown", 99, "Arista 7280R"},
-		// Spine Layer  
+		// Spine Layer
 		{"spine", "unknown", 99, "Arista 7280R"},
 		{"core", "unknown", 99, "Nexus 9000"},
 		// Leaf Layer
@@ -185,8 +160,8 @@ func generateSampleData(count int) ([]topology.Device, []topology.Link) {
 				Type:         deviceType.typeName,
 				Hardware:     deviceType.hardware,
 				LayerID:      nil, // will be set by classification
-				DeviceType:   "", // will be set by classification
-				ClassifiedBy: "", // empty string will be handled as NULL in database
+				DeviceType:   "",  // will be set by classification
+				ClassifiedBy: "",  // empty string will be handled as NULL in database
 				Metadata: map[string]string{
 					"datacenter": "dc1",
 					"rack":       fmt.Sprintf("rack-%d", (i/10)+1),
