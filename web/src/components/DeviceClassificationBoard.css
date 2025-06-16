@@ -127,6 +127,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .section-header {
@@ -173,15 +174,14 @@
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  overflow: hidden;
+  overflow-y: auto;
+  height: 100%;
 }
 
 .layers-grid {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 0;
-  height: 100%;
-  overflow-x: auto;
-  min-height: 600px;
 }
 
 .layer-column {
@@ -190,8 +190,14 @@
   flex-direction: column;
   transition: all 0.3s ease;
   position: relative;
-  min-width: 280px;
-  flex-shrink: 0;
+  cursor: pointer;
+  min-height: 120px;
+}
+
+.layer-column:hover {
+  background: rgba(52, 152, 219, 0.05);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .layer-column:last-child {
@@ -262,28 +268,7 @@
   text-align: center;
 }
 
-.layer-content {
-  flex: 1;
-  padding: 16px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 
-.empty-layer {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: #bdc3c7;
-  font-style: italic;
-  border: 2px dashed #ecf0f1;
-  border-radius: 8px;
-  padding: 40px 20px;
-  min-height: 120px;
-}
 
 /* デバイスカード */
 .device-card {
@@ -534,26 +519,6 @@
   border-color: #3498db;
 }
 
-.layer-view-button {
-  padding: 16px;
-  text-align: center;
-}
-
-.view-devices-btn {
-  width: 100%;
-  min-height: 48px;
-  font-size: 14px;
-  border: 2px dashed #bdc3c7;
-  background: transparent;
-  color: #7f8c8d;
-  transition: all 0.2s ease;
-}
-
-.view-devices-btn:hover {
-  border-color: #3498db;
-  color: #3498db;
-  background: rgba(52, 152, 219, 0.05);
-}
 
 /* レスポンシブ対応 */
 @media (max-width: 1200px) {
@@ -566,7 +531,15 @@
   .classification-layout {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
-    height: auto;
+    height: calc(100vh - 150px);
+  }
+  
+  .unclassified-section {
+    max-height: 40vh;
+  }
+  
+  .layers-section {
+    max-height: 50vh;
   }
   
   .board-header {
@@ -580,18 +553,12 @@
   }
   
   .layers-grid {
-    flex-direction: column;
-    overflow-x: visible;
-    overflow-y: auto;
-    min-height: auto;
-    max-height: 70vh;
+    grid-template-columns: 1fr;
   }
   
   .layer-column {
     border-right: none;
     border-bottom: 1px solid #ecf0f1;
-    min-width: auto;
-    flex-shrink: 1;
   }
   
   .layer-column:last-child {
@@ -621,29 +588,24 @@
 
 /* スクロールバーのスタイリング */
 .device-pool::-webkit-scrollbar,
-.layer-content::-webkit-scrollbar,
-.layers-grid::-webkit-scrollbar {
+.layers-section::-webkit-scrollbar {
   width: 6px;
-  height: 6px;
 }
 
 .device-pool::-webkit-scrollbar-track,
-.layer-content::-webkit-scrollbar-track,
-.layers-grid::-webkit-scrollbar-track {
+.layers-section::-webkit-scrollbar-track {
   background: #f1f1f1;
   border-radius: 3px;
 }
 
 .device-pool::-webkit-scrollbar-thumb,
-.layer-content::-webkit-scrollbar-thumb,
-.layers-grid::-webkit-scrollbar-thumb {
+.layers-section::-webkit-scrollbar-thumb {
   background: #c1c1c1;
   border-radius: 3px;
 }
 
 .device-pool::-webkit-scrollbar-thumb:hover,
-.layer-content::-webkit-scrollbar-thumb:hover,
-.layers-grid::-webkit-scrollbar-thumb:hover {
+.layers-section::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
 

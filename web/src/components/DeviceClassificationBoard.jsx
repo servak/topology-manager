@@ -268,6 +268,20 @@ function DeviceClassificationBoard() {
     setDraggedDevice(null)
   }
 
+  // レイヤークリック処理（ドラッグ&ドロップと競合テスト）
+  const handleLayerClick = (layer) => {
+    // ドラッグ中の場合はクリック処理をスキップ
+    if (draggedDevice) {
+      return
+    }
+    
+    // デバイス一覧の表示/非表示を切り替え
+    setSelectedLayer(selectedLayer?.id === layer.id ? null : { 
+      ...layer, 
+      devices: classifiedDevices[layer.id] || [] 
+    })
+  }
+
   const handleUnclassifyDevice = async (deviceId) => {
     try {
       const response = await fetch(`/api/v1/classification/devices/${deviceId}`, {
@@ -703,6 +717,7 @@ function DeviceClassificationBoard() {
                 onDragOver={(e) => handleDragOver(e, layer.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, layer.id)}
+                onClick={() => handleLayerClick(layer)}
               >
                 <div className="layer-header">
                   <div className="layer-indicator" style={{ backgroundColor: layer.color }}></div>
@@ -712,17 +727,6 @@ function DeviceClassificationBoard() {
                   </div>
                   <div className="device-count">
                     {classifiedDevices[layer.id]?.length || 0}台
-                  </div>
-                </div>
-                
-                <div className="layer-content">
-                  <div className="layer-view-button">
-                    <button 
-                      className="btn btn-secondary view-devices-btn"
-                      onClick={() => setSelectedLayer(selectedLayer?.id === layer.id ? null : { ...layer, devices: classifiedDevices[layer.id] || [] })}
-                    >
-                      {selectedLayer?.id === layer.id ? '📋 一覧を閉じる' : '📋 デバイス一覧'}
-                    </button>
                   </div>
                 </div>
               </div>
